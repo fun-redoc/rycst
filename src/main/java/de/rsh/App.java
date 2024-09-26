@@ -19,16 +19,6 @@ import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.function.Function;
 
-/*
- * TODO
- * - transform raycasts into 3d space
- * - detect collision betwenn player an walls or other world objects
- * - intermediary: use colors to distingish walls&objects
- * - use textures
- * - introduce moving objects other than player
- * - enable throwing objects
- * - make network capable (springboot with web socks)
- */
 import javax.swing.ImageIcon;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
@@ -124,7 +114,7 @@ class RayCastState {
     final static double AHEAD = 1.0;
     final static double REVERSE = -1.0;
     final static double STOPPED = 0.0;
-    final static double TURN_RADINAS = Math.PI/8/1000000000D; // turn per nano second
+    final static double TURN_RADINAS = Math.PI/2/1000000000D; // turn per nano second
 
     double posX, posY;  //x and y  position in grid
     double dirX = 0.0, dirY = -1.0; //initially look upward (one grid)
@@ -488,7 +478,7 @@ public class App extends JFrame {
     private void drawForeground(Graphics2D g) {
         g.setColor(new Color(0xff,0xff,0xff,255));
         var trace = drawGameField3D(g, false);
-        drawGameFieldMiniMap(g, new Color(0xbb,0xbb,0xbb,0x55), 1, 1, 0.5, trace);
+        drawGameFieldMiniMap(g, new Color(0xbb,0xbb,0xbb,0x55), 1, 1, 0.3, trace);
     }
 
     private Color worldFieldToColor(int field) {
