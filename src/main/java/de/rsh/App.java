@@ -1,5 +1,24 @@
 package de.rsh;
 
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.PriorityBlockingQueue;
+import java.util.function.Function;
+
 /*
  * TODO
  * - transform raycasts into 3d space
@@ -10,21 +29,19 @@ package de.rsh;
  * - enable throwing objects
  * - make network capable (springboot with web socks)
  */
-
-
-import javax.swing.*;
+import javax.swing.ImageIcon;
+import javax.swing.JComponent;
+import javax.swing.JFrame;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JPanel;
+import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
 
 import de.rsh.rycst.game.WorldMap;
 import de.rsh.rycst.utils.Tuple;
 import de.rsh.rycst.utils.Vec2d;
-
-import java.awt.*;
-import java.awt.event.*;
-import java.util.Comparator;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.PriorityBlockingQueue;
-import java.util.function.Function;
 
 class Loop {
     // do i still have to wrap funtions in classes?
@@ -107,11 +124,11 @@ class RayCastState {
     final static double AHEAD = 1.0;
     final static double REVERSE = -1.0;
     final static double STOPPED = 0.0;
-    final static double TURN_RADINAS = Math.PI/16/1000000000D; // turn per nano second
+    final static double TURN_RADINAS = Math.PI/8/1000000000D; // turn per nano second
 
     double posX, posY;  //x and y  position in grid
-    double dirX = -1.0, dirY = -1.0; //initially look upward (one grid)
-    double ncpX = 0, ncpY = 0.66; // direction vecor of the near clipping plane, corresponds to rougly FOV of 66° (Formula d*tan(alpha/2) where d is the distance to the player/camera ici 1 grid)
+    double dirX = 0.0, dirY = -1.0; //initially look upward (one grid)
+    double ncpX = 0.66, ncpY = 0.0; // direction vecor of the near clipping plane, corresponds to rougly FOV of 66° (Formula d*tan(alpha/2) where d is the distance to the player/camera ici 1 grid)
 
     double a = 0.0; // acceleration
     double v = 0.0; // velocity - moving speed of the player/camera in grids per second
@@ -171,8 +188,10 @@ class RayCastState {
         var dts = nanoToSecond(dt);
         v += a*dts;
         v = Math.clamp(v, 0, V_MAX);
-        if(map[(int)(posX + dirX * d * v)][(int)posY] == WorldMap.SPACE) posX += dirX * d * v; else stop();
-        if(map[(int)posX][(int)(posY + dirY  * d * v)] == WorldMap.SPACE) posY += dirY * d * v; else stop();
+        //if(map[(int)(posX + dirX * d * v)][(int)posY] == WorldMap.SPACE) posX += dirX * d * v; else stop();
+        //if(map[(int)posX][(int)(posY + dirY  * d * v)] == WorldMap.SPACE) posY += dirY * d * v; else stop();
+        if(map[(int)posY][(int)(posX + dirX * d * v)] == WorldMap.SPACE) posX += dirX * d * v; else stop();
+        if(map[(int)(posY + dirY  * d * v)][(int)posX] == WorldMap.SPACE) posY += dirY * d * v; else stop();
         return this;
     }
     private RayCastState turn(long t, long dt) {
@@ -211,12 +230,12 @@ class RayCastState {
         return this;
     }
     public RayCastState turnLeft() {
-        alpha = TURN_RADINAS;
+        alpha = -TURN_RADINAS;
         state = transitionOnEvent(Event.TURN);
         return this;
     }
     public RayCastState turnRight() {
-        alpha = -TURN_RADINAS;
+        alpha = TURN_RADINAS;
         state = transitionOnEvent(Event.TURN);
         return this;
     }
@@ -237,26 +256,6 @@ class RayCastState {
         state = transitionOnEvent(Event.STOP_MOVE);
         return this;
     }
-    //public RayCastState turnRight() {
-    //  //both camera direction and camera plane must be rotated
-    //  double oldDirX = dirX;
-    //  dirX = dirX * Math.cos(-r) - dirY * Math.sin(-r);
-    //  dirY = oldDirX * Math.sin(-r) + dirY * Math.cos(-r);
-    //  double oldncpX = ncpX;
-    //  ncpX = ncpX * Math.cos(-r) - ncpY * Math.sin(-r);
-    //  ncpY = oldncpX * Math.sin(-r) + ncpY * Math.cos(-r);
-    //  return this;
-    //}
-    //public RayCastState turnLeft() {
-    //  //both camera direction and camera plane must be rotated
-    //  double oldDirX = dirX;
-    //  dirX = dirX * Math.cos(r) - dirY * Math.sin(r);
-    //  dirY = oldDirX * Math.sin(r) + dirY * Math.cos(r);
-    //  double oldncpX = ncpX;
-    //  ncpX = ncpX * Math.cos(r) - ncpY * Math.sin(r);
-    //  ncpY = oldncpX * Math.sin(r) + ncpY * Math.cos(r);
-    //  return this;
-    //}
 }
 
 public class App extends JFrame {
@@ -274,6 +273,7 @@ public class App extends JFrame {
                                                 } 
                                              });
     private JComponent canvas;
+
     private App() {
         initSwing();
         rayCastState = new RayCastState(WorldMap.mapWidth/2.0, WorldMap.mapHeight/2.0, WorldMap.map.clone());
@@ -446,6 +446,36 @@ public class App extends JFrame {
         repaint();
     }
 
+    // update game state
+    public  void update(long t, long dt){ 
+        rayCastState.update(t,dt);
+        GameEvent gameEvent;
+        while ((gameEvent = eventQueue.poll()) != null) {
+            switch (gameEvent.getEvent()) {
+                case MOVE_AHEAD:
+                    rayCastState.goAhead();
+                    break;
+                case MOVE_BACK:
+                    rayCastState.reverse();
+                    break;
+                case TURN_LEFT:
+                    rayCastState.turnLeft(); 
+                    break;
+                case TURN_RIGHT:
+                    rayCastState.turnRight(); 
+                    break;
+                case RETARD:
+                    rayCastState.retard();
+                    break;
+                case STOP_TURNING:
+                    rayCastState.stopTurning();
+                    break;
+                default:
+                    System.err.println("unknown event " + gameEvent.getEvent());
+                    break;
+            }
+        }
+    }
 
     public  void draw(Graphics2D g){
 //        drawBackground(g);
@@ -457,17 +487,29 @@ public class App extends JFrame {
     }
     private void drawForeground(Graphics2D g) {
         g.setColor(new Color(0xff,0xff,0xff,255));
-        drawGameField3D(g);
-        /*
-        var minimapPos = new Vec2d(0.2,-0.2);
-        double minimapSize = 0.3D;
-        //var minimapPos = new Vec2d(-0.5,0.5);
-        //double minimapSize = 1.0D;
-        drawing2d.draw(g, minimapPos, minimapPos.movedByXY(minimapSize, -minimapSize));
-        */
+        var trace = drawGameField3D(g, false);
+        drawGameFieldMiniMap(g, new Color(0xbb,0xbb,0xbb,0x55), 1, 1, 0.5, trace);
     }
 
-    private void drawGameField3D(Graphics2D g) {
+    private Color worldFieldToColor(int field) {
+
+            switch(field)
+            {
+                case 1:  return  Color.RED;    
+                case 2:  return  Color.GREEN;  
+                case 3:  return  Color.BLUE;   
+                case 4:  return  Color.WHITE;  
+                default: return  Color.YELLOW; 
+            }
+    }
+
+    /**
+     * drawing raycasting according to https://lodev.org/cgtutor/raycasting.html
+     * Copyright (c) 2004-2021, Lode Vandevenne
+     * @param g
+     * @param trace hit coordinates are returned
+     */
+    private List<Tuple<Double,Double>> drawGameField3D(Graphics2D g, boolean trace) {
         /*
         Copyright (c) 2004-2021, Lode Vandevenne
 
@@ -490,6 +532,7 @@ public class App extends JFrame {
         NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
         SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         */
+        List< Tuple<Double, Double>> traceResult = new ArrayList<>() ;
         var map = rayCastState.map;
 
         double posX = rayCastState.posX, posY = rayCastState.posY;  //x and y start position
@@ -532,112 +575,141 @@ public class App extends JFrame {
             var deltaDistX = (rayDirX == 0) ? 1e30 : Math.abs(1.0 / rayDirX);
             var deltaDistY = (rayDirY == 0) ? 1e30 : Math.abs(1.0 / rayDirY);
 
-        double perpWallDist;
+            double perpWallDist;
 
-        //what direction to step in x or y-direction (either +1 or -1)
-        int stepX;
-        int stepY;
+            //what direction to step in x or y-direction (either +1 or -1)
+            int stepX;
+            int stepY;
 
-        boolean hit = false; //was there a wall hit?
-        int side = 0; //was a  0==North/South or a 1==Eeast/West wall hit?
-        //calculate step and initial sideDist
-        if(rayDirX < 0) {
-            stepX = -1;
-            sideDistX = (posX - mapX) * deltaDistX;
-        } else {
-            stepX = 1;
-            sideDistX = (mapX + 1.0 - posX) * deltaDistX;
-        }
-        if(rayDirY < 0) {
-            stepY = -1;
-            sideDistY = (posY - mapY) * deltaDistY;
-        } else {
-            stepY = 1;
-            sideDistY = (mapY + 1.0 - posY) * deltaDistY;
-        }
-
-        //perform DDA
-        while(!hit) {
-            //jump to next map square, either in x-direction, or in y-direction
-            if(sideDistX < sideDistY) {
-                sideDistX += deltaDistX;
-                mapX += stepX;
-                side = 0;
+            boolean hit = false; //was there a wall hit?
+            int side = 0; //was a  0==North/South or a 1==Eeast/West wall hit?
+            //calculate step and initial sideDist
+            if(rayDirX < 0) {
+                stepX = -1;
+                sideDistX = (posX - mapX) * deltaDistX;
             } else {
-                sideDistY += deltaDistY;
-                mapY += stepY;
-                side = 1;
+                stepX = 1;
+                sideDistX = (mapX + 1.0 - posX) * deltaDistX;
             }
-            //Check if ray has hit a wall
-            hit = (map[mapX][mapY] != WorldMap.SPACE);
-        }
+            if(rayDirY < 0) {
+                stepY = -1;
+                sideDistY = (posY - mapY) * deltaDistY;
+            } else {
+                stepY = 1;
+                sideDistY = (mapY + 1.0 - posY) * deltaDistY;
+            }
 
-        //Calculate distance projected on camera direction. This is the shortest distance from the point where the wall is
-        //hit to the camera plane. Euclidean to center camera point would give fisheye effect!
-        //This can be computed as (mapX - posX + (1 - stepX) / 2) / rayDirX for side == 0, or same formula with Y
-        //for size == 1, but can be simplified to the code below thanks to how sideDist and deltaDist are computed:
-        //because they were left scaled to |rayDir|. sideDist is the entire length of the ray above after the multiple
-        //steps, but we subtract deltaDist once because one step more into the wall was taken above.
+            //perform DDA
+            while(!hit) {
+                //jump to next map square, either in x-direction, or in y-direction
+                if(sideDistX < sideDistY) {
+                    sideDistX += deltaDistX;
+                    mapX += stepX;
+                    side = 0;
+                } else {
+                    sideDistY += deltaDistY;
+                    mapY += stepY;
+                    side = 1;
+                }
+                //Check if ray has hit a wall
+                //hit = (map[mapX][mapY] != WorldMap.SPACE);
+                hit = (map[mapY][mapX] != WorldMap.SPACE);
+            }
+
+            //Calculate distance projected on camera direction. This is the shortest distance from the point where the wall is
+            //hit to the camera plane. Euclidean to center camera point would give fisheye effect!
+            //This can be computed as (mapX - posX + (1 - stepX) / 2) / rayDirX for side == 0, or same formula with Y
+            //for size == 1, but can be simplified to the code below thanks to how sideDist and deltaDist are computed:
+            //because they were left scaled to |rayDir|. sideDist is the entire length of the ray above after the multiple
+            //steps, but we subtract deltaDist once because one step more into the wall was taken above.
         if(side == 0) perpWallDist = (sideDistX - deltaDistX);
         else          perpWallDist = (sideDistY - deltaDistY);
+            if(trace) {
+                if(side == 0)
+                    traceResult.add(new Tuple<Double,Double>((double)(mapX), (double)(mapY)));
+                else
+                    traceResult.add(new Tuple<Double,Double>((double)(mapX), (double)(mapY)));
+            }
 
-        //Calculate height of line to draw on screen
-        int lineHeight = (int)(h / perpWallDist);
+            //Calculate height of line to draw on screen
+            int lineHeight = (int)(h / perpWallDist);
 
-        //calculate lowest and highest pixel to fill in current stripe
-        int drawStart = -lineHeight / 2 + h / 2;
-        if(drawStart < 0) drawStart = 0;
-        int drawEnd = lineHeight / 2 + h / 2;
-        if(drawEnd >= h) drawEnd = h - 1;
+            //calculate lowest and highest pixel to fill in current stripe
+            int drawStart = -lineHeight / 2 + h / 2;
+            if(drawStart < 0) drawStart = 0;
+            int drawEnd = lineHeight / 2 + h / 2;
+            if(drawEnd >= h) drawEnd = h - 1;
 
-        //choose wall color
-        Color color;
-        switch(map[mapX][mapY])
-        {
-            case 1:  color = Color.RED;    break; //red
-            case 2:  color = Color.GREEN;  break; //green
-            case 3:  color = Color.BLUE;   break; //blue
-            case 4:  color = Color.WHITE;  break; //white
-            default: color = Color.YELLOW; break; //yellow
+            //choose wall color
+            //Color color = worldFieldToColor(map[mapX][mapY]);
+            Color color = worldFieldToColor(map[mapY][mapX]);
+
+            //give x and y sides different brightness
+            if(side == 1) {color = color.darker();}
+
+            //draw the pixels of the stripe as a vertical line
+            g.setColor(color);
+            g.drawLine(x, drawStart, x, drawEnd);
         }
-
-        //give x and y sides different brightness
-        if(side == 1) {color = color.darker();}
-
-        //draw the pixels of the stripe as a vertical line
-        g.setColor(color);
-        g.drawLine(x, drawStart, x, drawEnd);
+        return traceResult;
     }
-    }
+    private void drawGameFieldMiniMap(Graphics2D g, final Color backColor, final int posX, final int posY, final double scale, List<Tuple<Double,Double>> trace) {
+        final var saveColor = g.getColor();
+        final var map = rayCastState.map;
+        final var w = scale*getWidth();
+        final var h = scale*getHeight();
+        final var fieldHeight = h/map.length;
+        final var fieldWidth = w/map[0].length;
+        g.setColor(backColor);
 
-    // update game state
-    public  void update(long t, long dt){ 
-        rayCastState.update(t,dt);
-        GameEvent gameEvent;
-        while ((gameEvent = eventQueue.poll()) != null) {
-            switch (gameEvent.getEvent()) {
-                case MOVE_AHEAD:
-                    rayCastState.goAhead();
-                    break;
-                case MOVE_BACK:
-                    rayCastState.reverse();
-                    break;
-                case TURN_LEFT:
-                    rayCastState.turnLeft(); 
-                    break;
-                case TURN_RIGHT:
-                    rayCastState.turnRight(); 
-                    break;
-                case RETARD:
-                    rayCastState.retard();
-                    break;
-                case STOP_TURNING:
-                    rayCastState.stopTurning();
-                    break;
-                default:
-                    System.err.println("unknown event " + gameEvent.getEvent());
-                    break;
+        // Background
+        g.fillRect(posX, posY, (int)(posX+w), (int)(posY + h));
+
+        // world
+        for(int y=0; y<map.length; y++) {
+            for(int x= 0; x<map[y].length; x++) {
+                final var field = map[y][x];
+                if(field != WorldMap.SPACE) {
+                    final Color color = worldFieldToColor(field);
+                    g.setColor(color);
+                    final var fieldUpperX = (int)(posX + x*fieldWidth);
+                    final var fieldUpperY = (int)(posY + y*fieldHeight);
+                    g.fillRect(fieldUpperX, fieldUpperY, (int)fieldWidth, (int)fieldHeight);
+                }
             }
         }
+
+        // player / camera
+        g.setColor(Color.BLACK);
+        var cameraR = (Math.min(fieldHeight, fieldWidth)*0.7);
+        var cameraX = (posX + fieldWidth*rayCastState.posX - cameraR/2.0);
+        var cameraY = (posY + fieldHeight*rayCastState.posY - cameraR/2.0);
+        g.fillOval((int)cameraX, (int)cameraY, (int)cameraR, (int)cameraR);
+
+        // ray
+        var rayFromX = (posX + fieldWidth*rayCastState.posX );
+        var rayFromY = (posY + fieldHeight*rayCastState.posY);
+        var rayToX = (rayFromX + fieldWidth*rayCastState.dirX);
+        var rayToY = (rayFromY + fieldWidth*rayCastState.dirY);
+        g.drawLine((int)rayFromX, (int)rayFromY, (int)rayToX, (int)rayToY);
+
+        // frustrum
+        var frustrumFromX = rayToX - fieldWidth*rayCastState.ncpX;
+        var frustrumFromY = rayToY - fieldWidth*rayCastState.ncpY;
+        var frustrumToX = rayToX + fieldWidth*rayCastState.ncpX;
+        var frustrumToY = rayToY + fieldWidth*rayCastState.ncpY;
+        g.drawLine((int)frustrumFromX, (int)frustrumFromY, (int)frustrumToX, (int)frustrumToY);
+        g.drawLine((int)rayFromX, (int)rayFromY, (int)frustrumFromX, (int)frustrumFromY);
+        g.drawLine((int)rayFromX, (int)rayFromY, (int)frustrumToX, (int)frustrumToY);
+
+        // trace
+        trace.stream().forEach(xy -> {
+            var toX = posX + fieldWidth*xy.fst();
+            var toY = posY + fieldHeight*xy.snd();
+            g.drawLine((int)rayFromX, (int)rayFromY,(int)toX, (int)toY);
+        });
+
+        // reset color
+        g.setColor(saveColor);
     }
 }
