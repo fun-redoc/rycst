@@ -1,14 +1,14 @@
 package de.rsh.rycst.graph;
 import java.util.stream.*;
 
-import de.rsh.rycst.utils.Tuple;
+import de.rsh.rycst.utils.Pair;
 import de.rsh.rycst.utils.Vec2d;
 
 import java.util.*;
 
 public class Graph {
    private List<Vec2d> nodes = new ArrayList<Vec2d>(); 
-   private List<Tuple<Vec2d, Vec2d>> edges = new ArrayList<>();
+   private List<Pair<Vec2d, Vec2d>> edges = new ArrayList<>();
    
    /**
     * @apiNote mutating
@@ -20,7 +20,7 @@ public class Graph {
     return this;
    }
 
-   public Stream<Tuple<Vec2d,Vec2d>> edges() {
+   public Stream<Pair<Vec2d,Vec2d>> edges() {
      return edges.stream();
    }
 
@@ -63,14 +63,14 @@ public class Graph {
   /**
    * @returns Segment on success, undefined if segment already in graph (directional), or start and end point identical
    */
-  public Optional<Tuple<Vec2d,Vec2d>> tryAddSegment(Vec2d p1, Vec2d p2) {
+  public Optional<Pair<Vec2d,Vec2d>> tryAddSegment(Vec2d p1, Vec2d p2) {
     if (p1.equals(p2)) return Optional.empty();
 
     var sg1 = nodes().dropWhile((n) -> !p1.equals(n)).findFirst();
     var sg2 = nodes().dropWhile((n) -> !p2.equals(n)).findFirst();
     if (sg1.isEmpty() || sg2.isEmpty()) return Optional.empty();
 
-    var newEdge = new Tuple<>(sg1.get(), sg2.get());
+    var newEdge = new Pair<>(sg1.get(), sg2.get());
     if(edges().anyMatch((e) -> e.equals(newEdge))) {
         return Optional.empty();
     } else {
@@ -87,7 +87,7 @@ public class Graph {
     if(nodes.indexOf(n) < 0) return true;
     // 1. remove all  edges containing this node
     edges = edges()
-            .collect(() -> new ArrayList<Tuple<Vec2d,Vec2d>>(), 
+            .collect(() -> new ArrayList<Pair<Vec2d,Vec2d>>(), 
                      (acc,e) -> { 
                         if(!e.fst().equals(n) && !e.snd().equals(n)) {
                             acc.add(e);

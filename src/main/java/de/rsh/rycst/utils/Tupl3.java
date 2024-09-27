@@ -1,19 +1,17 @@
 package de.rsh.rycst.utils;
 import java.util.function.*;
 
-public record Tuple<T,S>(T t, S s) {
+public record Tupl3<T,S,R>(T t, S s, R r) {
     public T fst() { return t;}
     public S snd() { return s;}
-    public <U,V> Tuple<U, V> map(Function<Tuple<T,S>, Tuple<U,V>> cb) { return cb.apply(this); }
+    public R thr() { return r;}
+    public <U,V,W> Tupl3<U, V, W> map(Function<Tupl3<T,S,R>, Tupl3<U,V,W>> cb) { return cb.apply(this); }
     @Override public boolean equals(Object o) {
         return switch (o) {
             case null -> false;
-            case Tuple<?,?> t -> this.t.equals(t.t) && this.s.equals(t.s);
+            case Tupl3<?,?,?> t -> this.t.equals(t.t) && this.s.equals(t.s) && this.s.equals(t.r);
             default -> false;
         };
-//        if(o == null || !(o instanceof Tuple<?,?>)) return false;
-//        var tpl = (Tuple<?,?>)o;
-//        return this.t.equals(tpl.t) && this.s.equals(tpl.s);
     }
 @Override
 public int hashCode() {
@@ -21,6 +19,7 @@ public int hashCode() {
     int result = 1;
     result = prime * result + ((s == null) ? 0 : s.hashCode());
     result = prime * result + ((t == null) ? 0 : t.hashCode());
+    result = prime * result + ((r == null) ? 0 : r.hashCode());
     return result;
 }
 }

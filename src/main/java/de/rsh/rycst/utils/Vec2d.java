@@ -42,16 +42,16 @@ public final class Vec2d implements Cloneable {
     public double y() {
         return y;
     }
-    public Tuple<Integer,Integer> toInt() {
+    public Pair<Integer,Integer> toInt() {
         //var x_ = (int)(Math.ceil(x()));
         //var y_ = (int)(Math.ceil(y()));
         //var x_ = (int)(Math.round(x()));
         //var y_ = (int)(Math.round(y()));
-        var x_ = (int)(Math.floor(x()));
-        var y_ = (int)(Math.floor(y()));
-        //var x_ = (int)x();
-        //var y_ = (int)y();
-        return new Tuple<>(x_, y_);
+        //var x_ = (int)(Math.floor(x()));
+        //var y_ = (int)(Math.floor(y()));
+        var x_ = (int)x();
+        var y_ = (int)y();
+        return new Pair<>(x_, y_);
     }
     public <T> T map(Function<Vec2d, T> f) { return f.apply(this);}
     public Vec2d abs() {return new Vec2d(Math.abs(x), Math.abs(y));}
@@ -66,8 +66,8 @@ public final class Vec2d implements Cloneable {
     }
     public Vec2d flippedHorizontally() {return new Vec2d(x, -y, alreadyNormalized);}
     public Vec2d flippedVertically() {return new Vec2d(-x, y, alreadyNormalized);}
-    public Vec2d rotateOrthogonallyCounterClockwize() {return new Vec2d(-y, x, true);}
-    public Vec2d rotateOrthogonallyClockwize() {return new Vec2d(y, -x, true);}
+    public Vec2d rotateOrthogonallyCounterClockwize() {return new Vec2d(-y, x, alreadyNormalized);}
+    public Vec2d rotateOrthogonallyClockwize() {return new Vec2d(y, -x, alreadyNormalized);}
     public Vec2d movedBy(Vec2d v) { return new Vec2d(x + v.x, y + v.y); }
     public Vec2d movedByXY(double dx, double dy) { return new Vec2d(x + dx, y + dy); }
     public Vec2d neg() { return new Vec2d(-x, -y); }
@@ -87,6 +87,18 @@ public final class Vec2d implements Cloneable {
         return Math.hypot(dx, dy);
     }
     public boolean isNear(Vec2d p, double r){ return distTo(p) <= r; }
+
+    public double dot(Vec2d other) { return other.x()*this.x() + other.y()*this.y(); }
+
+    public double perpDistToLine(Vec2d p, Vec2d dir) {
+        // d = (p-this)*n/len(n) where * is dot product and n is the normal to dir
+        var n = dir.rotateOrthogonallyCounterClockwize();
+        var delta = p.sub(this);
+        var dp = delta.dot(n);
+        var d = dp/n.len();
+        return Math.abs(d);
+    }
+
     @Override
     public Vec2d clone() { return new Vec2d(x, y); }
     @Override
@@ -94,6 +106,10 @@ public final class Vec2d implements Cloneable {
         if(o == null || !(o instanceof Vec2d)) return false;
         var v = (Vec2d)o;
         return x == v.x && y == v.y;
+    }
+    @Override
+    public String toString() {
+        return String.format("Vec2d:[%.4f, %.4f]", x(), y());
     }
 }
 

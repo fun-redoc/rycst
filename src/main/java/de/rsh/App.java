@@ -30,8 +30,10 @@ import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
 import de.rsh.rycst.game.WorldMap;
-import de.rsh.rycst.utils.Tuple;
+import de.rsh.rycst.utils.Pair;
+import de.rsh.rycst.utils.RayCaster;
 import de.rsh.rycst.utils.Vec2d;
+import de.rsh.rycst.utils.RayCaster.Side;
 
 class Loop {
     // do i still have to wrap funtions in classes?
@@ -89,23 +91,23 @@ final class GameEvent {
 class RayCastState {
     public static enum State { RESTING,  MOVING, MOVING_AND_TURNING, TURNING, RETARDING, RETARDING_AND_TURNING  };
     public static enum Event { MOVE, RETARD, STOP_MOVE, TURN, STOP_TURN  };
-    public static Map<Tuple<State, Event>, State> transition = Map.ofEntries(
-        Map.entry(new Tuple<State,Event>(State.RESTING, Event.TURN), State.TURNING),
-        Map.entry(new Tuple<State,Event>(State.RESTING, Event.MOVE), State.MOVING),
-        Map.entry(new Tuple<State,Event>(State.MOVING, Event.RETARD), State.RETARDING),
-        Map.entry(new Tuple<State,Event>(State.MOVING, Event.TURN), State.MOVING_AND_TURNING),
-        Map.entry(new Tuple<State,Event>(State.MOVING, Event.STOP_MOVE), State.RESTING),
-        Map.entry(new Tuple<State,Event>(State.TURNING, Event.STOP_TURN), State.RESTING),
-        Map.entry(new Tuple<State,Event>(State.TURNING, Event.MOVE), State.MOVING_AND_TURNING),
-        Map.entry(new Tuple<State,Event>(State.MOVING_AND_TURNING, Event.RETARD), State.RETARDING_AND_TURNING),
-        Map.entry(new Tuple<State,Event>(State.MOVING_AND_TURNING, Event.STOP_TURN), State.MOVING),
-        Map.entry(new Tuple<State,Event>(State.MOVING_AND_TURNING, Event.STOP_MOVE), State.TURNING),
-        Map.entry(new Tuple<State,Event>(State.RETARDING_AND_TURNING, Event.STOP_TURN), State.RETARDING),
-        Map.entry(new Tuple<State,Event>(State.RETARDING_AND_TURNING, Event.STOP_MOVE), State.TURNING),
-        Map.entry(new Tuple<State,Event>(State.RETARDING_AND_TURNING, Event.MOVE), State.MOVING_AND_TURNING),
-        Map.entry(new Tuple<State,Event>(State.RETARDING, Event.STOP_MOVE), State.RESTING),
-        Map.entry(new Tuple<State,Event>(State.RETARDING, Event.MOVE), State.MOVING),
-        Map.entry(new Tuple<State,Event>(State.RETARDING, Event.TURN), State.RETARDING_AND_TURNING)
+    public static Map<Pair<State, Event>, State> transition = Map.ofEntries(
+        Map.entry(new Pair<State,Event>(State.RESTING, Event.TURN), State.TURNING),
+        Map.entry(new Pair<State,Event>(State.RESTING, Event.MOVE), State.MOVING),
+        Map.entry(new Pair<State,Event>(State.MOVING, Event.RETARD), State.RETARDING),
+        Map.entry(new Pair<State,Event>(State.MOVING, Event.TURN), State.MOVING_AND_TURNING),
+        Map.entry(new Pair<State,Event>(State.MOVING, Event.STOP_MOVE), State.RESTING),
+        Map.entry(new Pair<State,Event>(State.TURNING, Event.STOP_TURN), State.RESTING),
+        Map.entry(new Pair<State,Event>(State.TURNING, Event.MOVE), State.MOVING_AND_TURNING),
+        Map.entry(new Pair<State,Event>(State.MOVING_AND_TURNING, Event.RETARD), State.RETARDING_AND_TURNING),
+        Map.entry(new Pair<State,Event>(State.MOVING_AND_TURNING, Event.STOP_TURN), State.MOVING),
+        Map.entry(new Pair<State,Event>(State.MOVING_AND_TURNING, Event.STOP_MOVE), State.TURNING),
+        Map.entry(new Pair<State,Event>(State.RETARDING_AND_TURNING, Event.STOP_TURN), State.RETARDING),
+        Map.entry(new Pair<State,Event>(State.RETARDING_AND_TURNING, Event.STOP_MOVE), State.TURNING),
+        Map.entry(new Pair<State,Event>(State.RETARDING_AND_TURNING, Event.MOVE), State.MOVING_AND_TURNING),
+        Map.entry(new Pair<State,Event>(State.RETARDING, Event.STOP_MOVE), State.RESTING),
+        Map.entry(new Pair<State,Event>(State.RETARDING, Event.MOVE), State.MOVING),
+        Map.entry(new Pair<State,Event>(State.RETARDING, Event.TURN), State.RETARDING_AND_TURNING)
     );
     State state = State.RESTING;
     final static double ACC_MAX = 0.05;
@@ -170,7 +172,7 @@ class RayCastState {
         return (double)ns/1000000000D; //(10^-9)
     }
     private State transitionOnEvent(Event e) {
-        var nextState = transition.get(new Tuple<State,Event>(state, e));
+        var nextState = transition.get(new Pair<State,Event>(state, e));
         //System.out.printf("(%s,%s)=>%s\n", state, e, nextState);
         return nextState != null ? nextState : state;
     }
@@ -477,7 +479,9 @@ public class App extends JFrame {
     }
     private void drawForeground(Graphics2D g) {
         g.setColor(new Color(0xff,0xff,0xff,255));
-        var trace = drawGameField3D(g, false);
+        var trace = Optional.of((List<Pair<Double,Double>>)new ArrayList<Pair<Double,Double>>());
+        //drawGameField3D(g, Optional.empty());
+        drawGameField3D_rsh(g, trace);
         drawGameFieldMiniMap(g, new Color(0xbb,0xbb,0xbb,0x55), 1, 1, 0.3, trace);
     }
 
@@ -499,7 +503,7 @@ public class App extends JFrame {
      * @param g
      * @param trace hit coordinates are returned
      */
-    private List<Tuple<Double,Double>> drawGameField3D(Graphics2D g, boolean trace) {
+    private void drawGameField3D(Graphics2D g, Optional<List<Pair<Double,Double>>> trace) {
         /*
         Copyright (c) 2004-2021, Lode Vandevenne
 
@@ -522,7 +526,6 @@ public class App extends JFrame {
         NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
         SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         */
-        List< Tuple<Double, Double>> traceResult = new ArrayList<>() ;
         var map = rayCastState.map;
 
         double posX = rayCastState.posX, posY = rayCastState.posY;  //x and y start position
@@ -614,11 +617,11 @@ public class App extends JFrame {
             //steps, but we subtract deltaDist once because one step more into the wall was taken above.
         if(side == 0) perpWallDist = (sideDistX - deltaDistX);
         else          perpWallDist = (sideDistY - deltaDistY);
-            if(trace) {
+            if(trace.isPresent()) {
                 if(side == 0)
-                    traceResult.add(new Tuple<Double,Double>((double)(mapX), (double)(mapY)));
+                    trace.get().add(new Pair<Double,Double>((double)(mapX), (double)(mapY)));
                 else
-                    traceResult.add(new Tuple<Double,Double>((double)(mapX), (double)(mapY)));
+                    trace.get().add(new Pair<Double,Double>((double)(mapX), (double)(mapY)));
             }
 
             //Calculate height of line to draw on screen
@@ -641,9 +644,8 @@ public class App extends JFrame {
             g.setColor(color);
             g.drawLine(x, drawStart, x, drawEnd);
         }
-        return traceResult;
     }
-    private void drawGameFieldMiniMap(Graphics2D g, final Color backColor, final int posX, final int posY, final double scale, List<Tuple<Double,Double>> trace) {
+    private void drawGameFieldMiniMap(Graphics2D g, final Color backColor, final int posX, final int posY, final double scale, Optional<List<Pair<Double,Double>>> trace) {
         final var saveColor = g.getColor();
         final var map = rayCastState.map;
         final var w = scale*getWidth();
@@ -693,13 +695,82 @@ public class App extends JFrame {
         g.drawLine((int)rayFromX, (int)rayFromY, (int)frustrumToX, (int)frustrumToY);
 
         // trace
-        trace.stream().forEach(xy -> {
-            var toX = posX + fieldWidth*xy.fst();
-            var toY = posY + fieldHeight*xy.snd();
+        g.setColor(Color.LIGHT_GRAY);
+        trace.ifPresent(tr -> tr.stream().forEach(xy -> {
+            var toX = fieldWidth*xy.fst().doubleValue();
+            var toY = fieldHeight*xy.snd().doubleValue();
             g.drawLine((int)rayFromX, (int)rayFromY,(int)toX, (int)toY);
-        });
+        }));
 
         // reset color
         g.setColor(saveColor);
+    }
+    private void drawGameField3D_rsh(Graphics2D g, Optional<List<Pair<Double,Double>>> trace) {
+        var map = rayCastState.map;
+
+        double posX   = rayCastState.posX, posY   = rayCastState.posY;  //x and y start position
+        double dirX   = rayCastState.dirX, dirY   = rayCastState.dirY; //idirection vector
+        double planeX = rayCastState.ncpX, planeY = rayCastState.ncpY; //the 2d raycaster version of camera plane
+
+        //double time = 0; //time of current frame
+        //double oldTime = 0; //time of previous frame
+        var w = getWidth();
+        var h = getHeight();
+
+        var pos = new Vec2d(posX, posY);
+        var dir = new Vec2d(dirX, dirY);
+        var ncp = new Vec2d(planeX, planeY);
+        var ncpFrom = pos.add(dir).sub(ncp);
+        var ncpTo = pos.add(dir).add(ncp);
+        var ncpDir = ncpTo.sub(ncpFrom);
+        var ncpLen = ncpDir.len();
+        var ncpStrideDist = ncpLen / (double)w;
+        var ncpStride = ncpDir.scaled(ncpStrideDist);
+
+
+        var rc = new RayCaster(WorldMap.mapWidth, WorldMap.mapHeight);
+        
+        var ncpTraverser = ncpFrom;
+        for(int x=0; x<w; x++) {
+            var rayDir = ncpTraverser.sub(pos).normalized();
+            var maybeCastRes = rc.rayCastToGrid(pos, rayDir, (c) -> (map[c.snd()][c.fst()] != WorldMap.SPACE));
+            if(maybeCastRes.isPresent()) {
+                var castRes  = maybeCastRes.get();
+                var castPos  = castRes.fst();
+                var castSide = castRes.snd();
+                var castCell = castRes.thr();
+
+                if(trace.isPresent()) {
+                    trace.get().add(new Pair<Double, Double>(castPos.x(), castPos.y()));
+                }
+
+                // now I need the perpedicular distance between castPos and the camera plane 
+                var perpDist = castPos.perpDistToLine(pos, ncp);
+                //var perpDist = castPos.sub(pos).len(); <- gives fisheye effect
+
+                //Calculate height of line to draw on screen
+                int lineHeight = (int)(h / perpDist);
+
+                //calculate lowest and highest pixel to fill in current stripe
+                int drawStart = -lineHeight / 2 + h / 2;
+                if(drawStart < 0) drawStart = 0;
+                int drawEnd = lineHeight / 2 + h / 2;
+                if(drawEnd >= h) drawEnd = h - 1;
+
+                //choose wall color
+                //Color color = worldFieldToColor(map[mapX][mapY]);
+                Color color = worldFieldToColor(map[castCell.snd()][castCell.fst()]);
+
+                //give x and y sides different brightness
+                if(castSide == Side.Ver) {color = color.darker();}
+
+                //draw the pixels of the stripe as a vertical line
+                g.setColor(color);
+                g.drawLine(x, drawStart, x, drawEnd);
+            };
+
+            ncpTraverser = ncpTraverser.add(ncpStride);
+        }
+
     }
 }
