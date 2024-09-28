@@ -1,4 +1,4 @@
-### App::drawGameField3d 
+### RayCater::drawGameField3d_lodev 
 uses code from https://lodev.org/cgtutor/raycasting.html transfered to JAVA (c) Lang. The following Licenze note must be respected when reusing, distributing in source or binary:
 
  ```
