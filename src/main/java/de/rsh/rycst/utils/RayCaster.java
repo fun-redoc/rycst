@@ -6,16 +6,13 @@ import java.util.List;
 
 public class RayCaster {
     // WTH: I only want a function, when will java have real functions?
+    /**
+     * function callback used in drawGamefield3D_lodev function, to decouple ray cast math from drawing method
+     * in the case i want to use it with SDL, Terminal, or others,.. instead of pure java.
+     */
     @FunctionalInterface
     public interface RayDrawingCallback   {
         public void apply(int side, int x, int y1, int y2, int mapX, int map);
-    }
-    private final double EPSILON = 1e-3;
-    private double gridWidth;
-    private double gridHeight;
-    public RayCaster(int gridWidth, int gridHeight) {
-        this.gridWidth  = (double)gridWidth;
-        this.gridHeight = (double)gridHeight;
     }
 
     /**
@@ -27,7 +24,7 @@ public class RayCaster {
      * @return neares snap point and snap Side
      */
     public static enum Side {Hor, Ver};
-    private Pair<Vec2d, Side> rayStep(Vec2d from, Vec2d dir) {
+    private static Pair<Vec2d, Side> rayStep(Vec2d from, Vec2d dir) {
         final double eps = 1e-3;
         var d = dir;
         var v = from;
@@ -88,9 +85,10 @@ public class RayCaster {
      * @param dir
      * @return snap coords on hit grid cell, the hit side, the index of grid cell
      */
-    public Optional<Tupl3<Vec2d, Side, Pair<Integer,Integer>>>
-           rayCastUntilHit(Vec2d pos, Vec2d dir, Predicate<Pair<Integer,Integer>> hit) {
+    public static Optional<Tupl3<Vec2d, Side, Pair<Integer,Integer>>>
+           rayCastUntilHit(Vec2d pos, Vec2d dir, int gridWidth, int gridHeight, Predicate<Pair<Integer,Integer>> hit) {
 
+        final double EPSILON = 1e-3;
         Optional<Tupl3<Vec2d, Side, Pair<Integer, Integer>>> result = Optional.empty();
         var rs = rayStep(pos, dir);
         var goon = true;

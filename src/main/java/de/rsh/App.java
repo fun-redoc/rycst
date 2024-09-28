@@ -599,13 +599,13 @@ public class App extends JFrame {
         var ncpStride = ncpDir.scaled(ncpStrideDist);
 
 
-        var rc = new RayCaster(WorldMap.mapWidth, WorldMap.mapHeight);
-        
         var ncpTraverser = ncpFrom;
         for(int x=0; x<w; x++) {
             var rayDir = ncpTraverser.sub(pos).normalized();
             //var maybeCastRes = rc.rayCastToGrid(pos, rayDir, (c) -> (map[c.snd()][c.fst()] != WorldMap.SPACE));
-            var maybeCastRes = rc.rayCastUntilHit(pos, rayDir, (c) -> (map[c.snd()][c.fst()] != WorldMap.SPACE));
+            var maybeCastRes = RayCaster.rayCastUntilHit(pos, rayDir,
+                                                         WorldMap.mapWidth, WorldMap.mapHeight,
+                                                         (c) -> (map[c.snd()][c.fst()] != WorldMap.SPACE));
             if(maybeCastRes.isPresent()) {
                 var castRes  = maybeCastRes.get();
                 var castPos  = castRes.fst();
