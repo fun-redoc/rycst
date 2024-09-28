@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.List;
 
 public class RayCaster {
-    // WHF I only want a function, when will java have real functions?
+    // WTH: I only want a function, when will java have real functions?
     @FunctionalInterface
     public interface RayDrawingCallback   {
         public void apply(int side, int x, int y1, int y2, int mapX, int map);
