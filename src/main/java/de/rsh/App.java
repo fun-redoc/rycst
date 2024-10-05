@@ -11,6 +11,8 @@ import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.image.BufferedImage;
+import java.awt.image.BufferedImageOp;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.function.Function;
+import java.util.function.DoubleSupplier;
 
 import javax.swing.ImageIcon;
 import javax.swing.JComponent;
@@ -30,8 +33,10 @@ import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
 import de.rsh.rycst.game.WorldMap;
+import de.rsh.rycst.utils.MathUtils;
 import de.rsh.rycst.utils.Pair;
 import de.rsh.rycst.utils.RayCaster;
+import de.rsh.rycst.utils.Texture;
 import de.rsh.rycst.utils.Vec2d;
 import de.rsh.rycst.utils.RayCaster.Side;
 
@@ -251,10 +256,38 @@ class RayCastState {
 }
 
 public class App extends JFrame {
+    private final int  textureHeight = 64;
+    private final int  textureWidth = 64;
     public final long FPS=60; // frame per second
     public final long FRAME_DURATION_NANOS=1000*1000/FPS; // nano secds
     private Thread loop;
     private RayCastState rayCastState;
+
+    private BufferedImage texRedX = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.RED_WITH_BLACK_CROSS.get(textureWidth,textureHeight);
+        texRedX.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
+    private BufferedImage texRedBrick = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.RED_BRICKS.get(textureWidth,textureHeight);
+        texRedBrick.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
+    private BufferedImage texVertYello = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.VERT_YELLO.get(textureWidth,textureHeight);
+        texVertYello.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
+    private BufferedImage texHrzBlu = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.HORIZ_BLUE.get(textureWidth,textureHeight);
+        texHrzBlu.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
+    private BufferedImage texTest1 = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.TEST1.get(textureWidth,textureHeight);
+        texTest1.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
 
     private static final int INITIAL_QUEUE_CAPACITY = 11;
     public PriorityBlockingQueue<GameEvent> eventQueue =
@@ -478,7 +511,7 @@ public class App extends JFrame {
         var trace = Optional.of((List<Pair<Double,Double>>)new ArrayList<Pair<Double,Double>>());
         //drawGameField3D(g, Optional.empty());
         drawGameField3D_rsh(g, trace);
-        drawGameFieldMiniMap(g, new Color(0xbb,0xbb,0xbb,0x55), 1, 1, 0.3, trace);
+        drawGameFieldMiniMap(g, new Color(0xbb,0xbb,0xbb,0x55), 1, 1, 0.5, trace);
     }
 
     private Color worldFieldToColor(int field) {
@@ -532,12 +565,41 @@ public class App extends JFrame {
         for(int y=0; y<map.length; y++) {
             for(int x= 0; x<map[y].length; x++) {
                 final var field = map[y][x];
-                if(field != WorldMap.SPACE) {
-                    final Color color = worldFieldToColor(field);
-                    g.setColor(color);
-                    final var fieldUpperX = (int)(posX + x*fieldWidth);
-                    final var fieldUpperY = (int)(posY + y*fieldHeight);
-                    g.fillRect(fieldUpperX, fieldUpperY, (int)fieldWidth, (int)fieldHeight);
+                final var fieldUpperX = (int)(posX + x*fieldWidth);
+                final var fieldUpperY = (int)(posY + y*fieldHeight);
+                switch (field) {
+                    case WorldMap.SPACE:
+                        // leave transparent
+                        break;
+                    case WorldMap.OUTERWALL:
+                    {
+                        g.drawImage(texHrzBlu, fieldUpperX,fieldUpperY, (int)fieldWidth, (int)fieldHeight, null);
+                    }
+                    break;
+                    case WorldMap.PILAR:
+                    {
+
+                        g.drawImage(texVertYello, fieldUpperX,fieldUpperY, (int)fieldWidth, (int)fieldHeight, null);
+                    }
+                    break;
+                    case WorldMap.HOUSEWALL:
+                    {
+
+                        g.drawImage(texRedBrick, fieldUpperX,fieldUpperY, (int)fieldWidth, (int)fieldHeight, null);
+                    }
+                    break;
+                    case WorldMap.COTTAGEWALL:
+                    {
+
+                        g.drawImage(texRedX, fieldUpperX,fieldUpperY, (int)fieldWidth, (int)fieldHeight, null);
+                    }
+                    break;
+                
+                    default:
+                        final Color color = worldFieldToColor(field);
+                        g.setColor(color);
+                        g.fillRect(fieldUpperX, fieldUpperY, (int)fieldWidth, (int)fieldHeight);
+                        break;
                 }
             }
         }
@@ -576,6 +638,8 @@ public class App extends JFrame {
         // reset color
         g.setColor(saveColor);
     }
+
+
     private void drawGameField3D_rsh(Graphics2D g, Optional<List<Pair<Double,Double>>> trace) {
         var map = rayCastState.map;
 
@@ -600,6 +664,7 @@ public class App extends JFrame {
 
 
         var ncpTraverser = ncpFrom;
+        // TODO: having a texture with the width of tw only tw stripes have to be drawn
         for(int x=0; x<w; x++) {
             var rayDir = ncpTraverser.sub(pos).normalized();
             //var maybeCastRes = rc.rayCastToGrid(pos, rayDir, (c) -> (map[c.snd()][c.fst()] != WorldMap.SPACE));
@@ -624,21 +689,84 @@ public class App extends JFrame {
                 int lineHeight = (int)(h / perpDist);
 
                 //calculate lowest and highest pixel to fill in current stripe
+                int drawStartClip = 0;
+                int drawEndClip = 0;
+                double factorStart = 0;
+                double factorEnd = 1;
                 int drawStart = -lineHeight / 2 + h / 2;
-                if(drawStart < 0) drawStart = 0;
                 int drawEnd = lineHeight / 2 + h / 2;
-                if(drawEnd >= h) drawEnd = h - 1;
+                if(drawStart < 0) {
+                    drawStartClip = -drawStart;
+                    factorStart = drawStartClip/(double)lineHeight;
+                    drawStart = 0;
+                }
+                if(drawEnd >= h) {
+                    drawEndClip = drawEnd - (h-1);
+                    factorEnd = 1.0 - drawEndClip/(double)lineHeight;
+                    drawEnd = h-1;
+                }
 
                 //choose wall color
-                //Color color = worldFieldToColor(map[mapX][mapY]);
-                Color color = worldFieldToColor(map[castCell.snd()][castCell.fst()]);
+                var cell = map[castCell.snd()][castCell.fst()];
 
-                //give x and y sides different brightness
-                if(castSide == Side.Ver) {color = color.darker();}
+                        Vec2d _castCell = Vec2d.fromPair(castCell);
+                        var castCellPosOnScreen = _castCell
+                                                    .div(new Vec2d(WorldMap.mapWidth, WorldMap.mapHeight))
+                                                    .get(); // I know that mapWidth and mapHeight are not 0
+                                                    //.mul(new Vec2d(getWidth(), getHeight()));
+                        double castCellScreeXRaw = castPos.sub(castCellPosOnScreen)
+                                                           .map(v ->  Math.abs(Side.Hor == castSide ? v.x() : v.y()));
+                        double castCellScreenX = Math.floor(castCellScreeXRaw);
+                        double castCellScreenXFactor =  castCellScreeXRaw - castCellScreenX;
+                        double castCellX = castCellScreenXFactor * textureWidth;
+                        double castCellStripeWidth = 1;
+                        double texStart = MathUtils.lerp(0, textureHeight, factorStart);
+                        double texEnd = MathUtils.lerp(0, textureHeight, factorEnd);
+                switch (cell) {
+                    case WorldMap.SPACE:
+                        //transparent
+                        break;
+                    case WorldMap.PILAR:
+                    {
+                        g.drawImage(texVertYello, x, drawStart, x+1, drawEnd,
+                                    (int)castCellX, 0, (int)(castCellX + castCellStripeWidth), textureHeight,
+                                    null);
+                    }
+                    break;
+                    case WorldMap.OUTERWALL:
+                    {
+                        g.drawImage(texHrzBlu, x, drawStart, x+1, drawEnd,
+                                    (int)castCellX, 0, (int)(castCellX + castCellStripeWidth), textureHeight,
+                                    null);
+                    }
+                    break;
+                    case WorldMap.HOUSEWALL:
+                    {
+                        g.drawImage(texRedBrick, x, drawStart, x+1, drawEnd,
+                                    (int)castCellX, (int)(texStart), (int)(castCellX + castCellStripeWidth), (int)(texEnd),
+                                    null);
+                    }
+                    break;
+                    case WorldMap.COTTAGEWALL:
+                    {
+                        //g.drawImage(texRedX, x, drawStart, x+1, drawEnd,
+                        g.drawImage(texTest1, x, drawStart, x+1, drawEnd,
+                                    (int)castCellX, (int)(texStart), (int)(castCellX + castCellStripeWidth), (int)(texEnd),
+                                    null);
+                    }
+                    break;
+                
+                    default:
+                        Color color = worldFieldToColor(map[castCell.snd()][castCell.fst()]);
 
-                //draw the pixels of the stripe as a vertical line
-                g.setColor(color);
-                g.drawLine(x, drawStart, x, drawEnd);
+                        //give x and y sides different brightness
+                        if(castSide == Side.Ver) {color = color.darker();}
+
+                        //draw the pixels of the stripe as a vertical line
+                        g.setColor(color);
+                        g.drawLine(x, drawStart, x, drawEnd);
+                        break;
+                }
             };
 
             ncpTraverser = ncpTraverser.add(ncpStride);

@@ -19,6 +19,9 @@ public final class Vec2d implements Cloneable {
     public static Vec2d down() {return Vec2d.down;}
     public static Vec2d left() {return Vec2d.left;}
     public static Vec2d right() {return Vec2d.right;}
+    public static <T extends Number> Vec2d fromPair(Pair<T,T> pair) { // this is strage, T should have the constraint to be integral, but there is non in java or is it?
+        return new Vec2d(pair.fst().doubleValue(), pair.snd().doubleValue());
+    }
 
     public Vec2d(double x, double y) {
         this.x = x;
