@@ -83,7 +83,7 @@ public class RayCaster {
      * it stops on hit or when leaving the grid
      * @param pos
      * @param dir
-     * @return snap coords on hit grid cell, the hit side, the index of grid cell
+     * @return snap coords on hit grid cell (in the grid coordinate system), the hit side, the index of grid cell (aka coordinates of the bottom left corner of the hit cell)
      */
     public static Optional<Tupl3<Vec2d, Side, Pair<Integer,Integer>>>
            rayCastUntilHit(Vec2d pos, Vec2d dir, int gridWidth, int gridHeight, Predicate<Pair<Integer,Integer>> hit) {

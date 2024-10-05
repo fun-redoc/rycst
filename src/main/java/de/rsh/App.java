@@ -709,19 +709,15 @@ public class App extends JFrame {
                 //choose wall color
                 var cell = map[castCell.snd()][castCell.fst()];
 
-                        Vec2d _castCell = Vec2d.fromPair(castCell);
-                        var castCellPosOnScreen = _castCell
-                                                    .div(new Vec2d(WorldMap.mapWidth, WorldMap.mapHeight))
-                                                    .get(); // I know that mapWidth and mapHeight are not 0
-                                                    //.mul(new Vec2d(getWidth(), getHeight()));
-                        double castCellScreeXRaw = castPos.sub(castCellPosOnScreen)
-                                                           .map(v ->  Math.abs(Side.Hor == castSide ? v.x() : v.y()));
-                        double castCellScreenX = Math.floor(castCellScreeXRaw);
-                        double castCellScreenXFactor =  castCellScreeXRaw - castCellScreenX;
-                        double castCellX = castCellScreenXFactor * textureWidth;
-                        double castCellStripeWidth = 1;
-                        double texStart = MathUtils.lerp(0, textureHeight, factorStart);
-                        double texEnd = MathUtils.lerp(0, textureHeight, factorEnd);
+                Vec2d _castCell = Vec2d.fromPair(castCell);
+                double castCellXRaw = castPos
+                                                .sub(_castCell)
+                                                .map(v ->  Math.abs(Side.Hor == castSide ? v.x() : v.y()));
+                double castCellX = castCellXRaw * textureWidth;
+                double castCellStripeWidth = 1;
+                double texStart = MathUtils.lerp(0, textureHeight, factorStart);
+                double texEnd = MathUtils.lerp(0, textureHeight, factorEnd);
+
                 switch (cell) {
                     case WorldMap.SPACE:
                         //transparent
