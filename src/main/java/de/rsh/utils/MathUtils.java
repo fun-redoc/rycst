@@ -1,4 +1,4 @@
-package de.rsh.rycst.utils;
+package de.rsh.utils;
 
 public final class MathUtils {
     public static double lerp(double a, double b, double p) {

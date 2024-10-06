@@ -1,4 +1,4 @@
-package de.rsh.rycst.utils;
+package de.rsh.utils;
 import java.util.function.*;
 
 public record Pair<T,S>(T t, S s) {

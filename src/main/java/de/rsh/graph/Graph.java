@@ -1,8 +1,7 @@
-package de.rsh.rycst.graph;
+package de.rsh.graph;
 import java.util.stream.*;
 
-import de.rsh.rycst.utils.Pair;
-import de.rsh.rycst.utils.Vec2d;
+import de.rsh.utils.Pair;
 
 import java.util.*;
 

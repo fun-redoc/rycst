@@ -1,7 +1,9 @@
-package de.rsh.rycst.utils;
+package de.rsh.graph;
 import java.lang.Math;
 import java.util.Optional;
 import java.util.function.Function;
+
+import de.rsh.utils.Pair;
 
 public final class Vec2d implements Cloneable {
     private static final Vec2d zero0 = new Vec2d(0.0,0.0);

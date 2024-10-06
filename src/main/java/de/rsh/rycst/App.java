@@ -1,4 +1,4 @@
-package de.rsh;
+package de.rsh.rycst;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -12,16 +12,11 @@ import java.awt.event.KeyListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
-import java.awt.image.BufferedImageOp;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.PriorityBlockingQueue;
-import java.util.function.Function;
-import java.util.function.DoubleSupplier;
-
 import javax.swing.ImageIcon;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
@@ -32,45 +27,18 @@ import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 
+import de.rsh.game.Loop;
+import de.rsh.game.RayCaster;
+import de.rsh.game.Texture;
+import de.rsh.game.RayCaster.Side;
+import de.rsh.graph.Vec2d;
+import de.rsh.rycst.game.GameState;
 import de.rsh.rycst.game.WorldMap;
-import de.rsh.rycst.utils.MathUtils;
-import de.rsh.rycst.utils.Pair;
-import de.rsh.rycst.utils.RayCaster;
-import de.rsh.rycst.utils.Texture;
-import de.rsh.rycst.utils.Vec2d;
-import de.rsh.rycst.utils.RayCaster.Side;
+import de.rsh.utils.MathUtils;
+import de.rsh.utils.Pair;
 
-class Loop {
-    // do i still have to wrap funtions in classes?
-    public static  Function<App, Thread> loop(long frameDurationNanos) {   return (app) -> {
-            return Thread.ofVirtual().unstarted(() -> {
-                    boolean running = true;
-                    try {
-                        var last = System.nanoTime();
-                        Thread.sleep(frameDurationNanos/1000);
-                        while(running) {
-                            var dt = System.nanoTime()-last;
-                            var t = System.nanoTime();       
-                            last = t;
-                            app.update(t, dt);
-                            app.render();
-                            var duration = System.nanoTime() - t;
-                            if(duration < frameDurationNanos) {
-                                Thread.sleep((frameDurationNanos - duration)/1000); // sleep thre remainig milli secotds
-                            }
-                        }
-                    } catch(InterruptedException e) {
-                        running = false;
-                        System.out.println("game loop terminated.");
-                    }
-                }
-            );
-        };
-    }
-}
-
-enum GameEventTag { MOVE_AHEAD, MOVE_BACK, TURN_RIGHT, TURN_LEFT, MOUSE_MOVE, RETARD, STOP_TURNING };
 final class GameEvent {
+        public enum GameEventTag { MOVE_AHEAD, MOVE_BACK, TURN_RIGHT, TURN_LEFT, MOUSE_MOVE, RETARD, STOP_TURNING };
         private GameEventTag evt;
         private Optional<Vec2d> p;
         private long timeStamp;
@@ -93,175 +61,13 @@ final class GameEvent {
         }
     }
 
-class RayCastState {
-    public static enum State { RESTING,  MOVING, MOVING_AND_TURNING, TURNING, RETARDING, RETARDING_AND_TURNING  };
-    public static enum Event { MOVE, RETARD, STOP_MOVE, TURN, STOP_TURN  };
-    public static Map<Pair<State, Event>, State> transition = Map.ofEntries(
-        Map.entry(new Pair<State,Event>(State.RESTING, Event.TURN), State.TURNING),
-        Map.entry(new Pair<State,Event>(State.RESTING, Event.MOVE), State.MOVING),
-        Map.entry(new Pair<State,Event>(State.MOVING, Event.RETARD), State.RETARDING),
-        Map.entry(new Pair<State,Event>(State.MOVING, Event.TURN), State.MOVING_AND_TURNING),
-        Map.entry(new Pair<State,Event>(State.MOVING, Event.STOP_MOVE), State.RESTING),
-        Map.entry(new Pair<State,Event>(State.TURNING, Event.STOP_TURN), State.RESTING),
-        Map.entry(new Pair<State,Event>(State.TURNING, Event.MOVE), State.MOVING_AND_TURNING),
-        Map.entry(new Pair<State,Event>(State.MOVING_AND_TURNING, Event.RETARD), State.RETARDING_AND_TURNING),
-        Map.entry(new Pair<State,Event>(State.MOVING_AND_TURNING, Event.STOP_TURN), State.MOVING),
-        Map.entry(new Pair<State,Event>(State.MOVING_AND_TURNING, Event.STOP_MOVE), State.TURNING),
-        Map.entry(new Pair<State,Event>(State.RETARDING_AND_TURNING, Event.STOP_TURN), State.RETARDING),
-        Map.entry(new Pair<State,Event>(State.RETARDING_AND_TURNING, Event.STOP_MOVE), State.TURNING),
-        Map.entry(new Pair<State,Event>(State.RETARDING_AND_TURNING, Event.MOVE), State.MOVING_AND_TURNING),
-        Map.entry(new Pair<State,Event>(State.RETARDING, Event.STOP_MOVE), State.RESTING),
-        Map.entry(new Pair<State,Event>(State.RETARDING, Event.MOVE), State.MOVING),
-        Map.entry(new Pair<State,Event>(State.RETARDING, Event.TURN), State.RETARDING_AND_TURNING)
-    );
-    State state = State.RESTING;
-    final static double ACC_MAX = 0.05;
-    final static double V_MAX = 1; // squares/second
-    final static double RETARD_FACTOR = 0.05; // squares/second
-    final static double AHEAD = 1.0;
-    final static double REVERSE = -1.0;
-    final static double STOPPED = 0.0;
-    final static double TURN_RADINAS = Math.PI/2/1000000000D; // turn per nano second
-
-    double posX, posY;  //x and y  position in grid
-    double dirX = 0.0, dirY = -1.0; //initially look upward (one grid)
-    double ncpX = 0.66, ncpY = 0.0; // direction vecor of the near clipping plane, corresponds to rougly FOV of 66° (Formula d*tan(alpha/2) where d is the distance to the player/camera ici 1 grid)
-
-    double a = 0.0; // acceleration
-    double v = 0.0; // velocity - moving speed of the player/camera in grids per second
-    double d = 1.0; // direction 1:ahead, -1:reverse    
-    double alpha =  0.0; // rotation - rotation speed in rad per nano-second
-
-    long curTime = 0; //time of current frame
-    long dt = 0; //time passed till previous frame
-
-    int[][] map;
-
-    public RayCastState(double posX, double posY, int[][] map) {
-        this.posX = posX;
-        this.posY = posY;
-        this.map = map;
-    }
-
-    public RayCastState map(Function<RayCastState,RayCastState> fn) {
-        return fn.apply(this);
-    }
-    public RayCastState update(long t, long dt) {
-        this.curTime = t;
-        this.dt = dt;
-        switch (state) {
-            case MOVING:
-                move(t,dt);
-                break;
-            case TURNING:
-                turn(t,dt);
-                break;
-            case MOVING_AND_TURNING:
-                move(t,dt);
-                turn(t,dt);
-                break;
-            case RETARDING_AND_TURNING:
-                retard(t, dt);
-                turn(t,dt);
-                break;
-            case RETARDING:
-                retard(t,dt);
-            break;
-            case RESTING:
-                break;
-        }
-
-        return this;
-    }
-    private double nanoToSecond(long ns) {
-        return (double)ns/1000000000D; //(10^-9)
-    }
-    private State transitionOnEvent(Event e) {
-        var nextState = transition.get(new Pair<State,Event>(state, e));
-        //System.out.printf("(%s,%s)=>%s\n", state, e, nextState);
-        return nextState != null ? nextState : state;
-    }
-    private RayCastState move(long t, long dt) {
-        var dts = nanoToSecond(dt);
-        v += a*dts;
-        v = Math.clamp(v, 0, V_MAX);
-        //if(map[(int)(posX + dirX * d * v)][(int)posY] == WorldMap.SPACE) posX += dirX * d * v; else stop();
-        //if(map[(int)posX][(int)(posY + dirY  * d * v)] == WorldMap.SPACE) posY += dirY * d * v; else stop();
-        if(map[(int)posY][(int)(posX + dirX * d * v)] == WorldMap.SPACE) posX += dirX * d * v; else stop();
-        if(map[(int)(posY + dirY  * d * v)][(int)posX] == WorldMap.SPACE) posY += dirY * d * v; else stop();
-        return this;
-    }
-    private RayCastState turn(long t, long dt) {
-        //both camera direction and camera plane must be rotated
-        var r = alpha*dt;
-        double oldDirX = dirX;
-        dirX = dirX * Math.cos(r) - dirY * Math.sin(r);
-        dirY = oldDirX * Math.sin(r) + dirY * Math.cos(r);
-        double oldncpX = ncpX;
-        ncpX = ncpX * Math.cos(r) - ncpY * Math.sin(r);
-        ncpY = oldncpX * Math.sin(r) + ncpY * Math.cos(r);
-        return this;
-    }
-    private RayCastState retard(long t, long dt) {
-        move(t,dt);
-        if(v == 0.0) {
-            stop();
-        }
-        return this;
-    }
-    public RayCastState goAhead() {
-        a = ACC_MAX; 
-        d = AHEAD;
-        state = transitionOnEvent(Event.MOVE);
-        return this;
-    }
-    public RayCastState reverse() {
-        a = ACC_MAX; 
-        d = REVERSE;
-        state = transitionOnEvent(Event.MOVE);
-        return this;
-    }
-    public RayCastState retard() {
-        a = -RETARD_FACTOR;
-        state = transitionOnEvent(Event.RETARD);
-        return this;
-    }
-    public RayCastState turnLeft() {
-        alpha = -TURN_RADINAS;
-        state = transitionOnEvent(Event.TURN);
-        return this;
-    }
-    public RayCastState turnRight() {
-        alpha = TURN_RADINAS;
-        state = transitionOnEvent(Event.TURN);
-        return this;
-    }
-    public RayCastState stopTurning() {
-        alpha = 0;
-        state = transitionOnEvent(Event.STOP_TURN);
-        return this;
-    }
-
-    /**
-     * @category internal state manipulation function
-     * @return
-     */
-    RayCastState stop() {
-        a = 0;
-        v = 0;
-        d = 0;
-        state = transitionOnEvent(Event.STOP_MOVE);
-        return this;
-    }
-}
-
 public class App extends JFrame {
     private final int  textureHeight = 64;
     private final int  textureWidth = 64;
     public final long FPS=60; // frame per second
     public final long FRAME_DURATION_NANOS=1000*1000/FPS; // nano secds
     private Thread loop;
-    private RayCastState rayCastState;
+    private GameState gameState;
 
     private BufferedImage texRedX = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
     {
@@ -301,7 +107,7 @@ public class App extends JFrame {
 
     private App() {
         initSwing();
-        rayCastState = new RayCastState(WorldMap.mapWidth/2.0, WorldMap.mapHeight/2.0, WorldMap.map.clone());
+        gameState = new GameState(WorldMap.mapWidth/2.0, WorldMap.mapHeight/2.0, WorldMap.map.clone());
         this.loop = Loop.loop(FRAME_DURATION_NANOS).apply(this);
     }
     private void initSwing() {
@@ -389,17 +195,17 @@ public class App extends JFrame {
             public void keyPressed(KeyEvent e) {
                 switch (e.getKeyCode()) {
                     case KeyEvent.VK_J:
-                        eventQueue.add(new GameEvent(GameEventTag.MOVE_AHEAD));
+                        eventQueue.add(new GameEvent(GameEvent.GameEventTag.MOVE_AHEAD));
                         break;
                     case KeyEvent.VK_K:
-                        eventQueue.add(new GameEvent(GameEventTag.MOVE_BACK));
+                        eventQueue.add(new GameEvent(GameEvent.GameEventTag.MOVE_BACK));
                         break;
                 
                     case KeyEvent.VK_H:
-                        eventQueue.add(new GameEvent(GameEventTag.TURN_LEFT));
+                        eventQueue.add(new GameEvent(GameEvent.GameEventTag.TURN_LEFT));
                         break;
                     case KeyEvent.VK_L:
-                        eventQueue.add(new GameEvent(GameEventTag.TURN_RIGHT));
+                        eventQueue.add(new GameEvent(GameEvent.GameEventTag.TURN_RIGHT));
                         break;
 
                     default:
@@ -411,17 +217,17 @@ public class App extends JFrame {
             public void keyReleased(KeyEvent e) {
                 switch (e.getKeyCode()) {
                     case KeyEvent.VK_J:
-                        eventQueue.add(new GameEvent(GameEventTag.RETARD));
+                        eventQueue.add(new GameEvent(GameEvent.GameEventTag.RETARD));
                         break;
                     case KeyEvent.VK_K:
-                        eventQueue.add(new GameEvent(GameEventTag.RETARD));
+                        eventQueue.add(new GameEvent(GameEvent.GameEventTag.RETARD));
                         break;
 
                     case KeyEvent.VK_H:
-                        eventQueue.add(new GameEvent(GameEventTag.STOP_TURNING));
+                        eventQueue.add(new GameEvent(GameEvent.GameEventTag.STOP_TURNING));
                         break;
                     case KeyEvent.VK_L:
-                        eventQueue.add(new GameEvent(GameEventTag.STOP_TURNING));
+                        eventQueue.add(new GameEvent(GameEvent.GameEventTag.STOP_TURNING));
                         break;
                 
                     default:
@@ -473,27 +279,27 @@ public class App extends JFrame {
 
     // update game state
     public  void update(long t, long dt){ 
-        rayCastState.update(t,dt);
+        gameState.update(t,dt);
         GameEvent gameEvent;
         while ((gameEvent = eventQueue.poll()) != null) {
             switch (gameEvent.getEvent()) {
                 case MOVE_AHEAD:
-                    rayCastState.goAhead();
+                    gameState.goAhead();
                     break;
                 case MOVE_BACK:
-                    rayCastState.reverse();
+                    gameState.reverse();
                     break;
                 case TURN_LEFT:
-                    rayCastState.turnLeft(); 
+                    gameState.turnLeft(); 
                     break;
                 case TURN_RIGHT:
-                    rayCastState.turnRight(); 
+                    gameState.turnRight(); 
                     break;
                 case RETARD:
-                    rayCastState.retard();
+                    gameState.retard();
                     break;
                 case STOP_TURNING:
-                    rayCastState.stopTurning();
+                    gameState.stopTurning();
                     break;
                 default:
                     System.err.println("unknown event " + gameEvent.getEvent());
@@ -530,13 +336,15 @@ public class App extends JFrame {
     private void drawGameField3D(Graphics2D g, Optional<List<Pair<Double,Double>>> trace) {
         RayCaster
         .drawGameField3D_lodev(getWidth(), getHeight(),
-                               rayCastState.posX, rayCastState.posY,
-                               rayCastState.dirX, rayCastState.dirY,
-                               rayCastState.ncpX, rayCastState.ncpY,
-                               (mapX, mapY) -> (rayCastState.map[mapY][mapX] != WorldMap.SPACE),
+                               gameState.posX(), gameState.posY(),
+                               gameState.dirX(), gameState.dirY(),
+                               gameState.ncpX(), gameState.ncpY(),
+                               //(mapX, mapY) -> (rayCastState.map[mapY][mapX] != WorldMap.SPACE),
+                               //(mapX, mapY) -> (gameState.map(mapX,mapY) != WorldMap.SPACE),
+                               gameState::isSpace,
                                (side,x,y1,y2,mapX, mapY) -> {
                                     //choose wall color
-                                    Color color = worldFieldToColor(rayCastState.map[mapY][mapX]);
+                                    Color color = worldFieldToColor(gameState.map(mapX,mapY));
 
                                     //give x and y sides different brightness
                                     if(side == 1) {color = color.darker();}
@@ -551,20 +359,20 @@ public class App extends JFrame {
 
     private void drawGameFieldMiniMap(Graphics2D g, final Color backColor, final int posX, final int posY, final double scale, Optional<List<Pair<Double,Double>>> trace) {
         final var saveColor = g.getColor();
-        final var map = rayCastState.map;
+        //final var map = gameState.map;
         final var w = scale*getWidth();
         final var h = scale*getHeight();
-        final var fieldHeight = h/map.length;
-        final var fieldWidth = w/map[0].length;
+        final var fieldHeight = h/gameState.mapHeight();
+        final var fieldWidth = w/gameState.mapWidth();
         g.setColor(backColor);
 
         // Background
         g.fillRect(posX, posY, (int)(posX+w), (int)(posY + h));
 
         // world
-        for(int y=0; y<map.length; y++) {
-            for(int x= 0; x<map[y].length; x++) {
-                final var field = map[y][x];
+        for(int y=0; y<gameState.mapHeight(); y++) {
+            for(int x= 0; x<gameState.rowWidth(y); x++) {
+                final var field = gameState.map(x,y); 
                 final var fieldUpperX = (int)(posX + x*fieldWidth);
                 final var fieldUpperY = (int)(posY + y*fieldHeight);
                 switch (field) {
@@ -607,22 +415,22 @@ public class App extends JFrame {
         // player / camera
         g.setColor(Color.BLACK);
         var cameraR = (Math.min(fieldHeight, fieldWidth)*0.7);
-        var cameraX = (posX + fieldWidth*rayCastState.posX - cameraR/2.0);
-        var cameraY = (posY + fieldHeight*rayCastState.posY - cameraR/2.0);
+        var cameraX = (posX + fieldWidth*gameState.posX() - cameraR/2.0);
+        var cameraY = (posY + fieldHeight*gameState.posY() - cameraR/2.0);
         g.fillOval((int)cameraX, (int)cameraY, (int)cameraR, (int)cameraR);
 
         // ray
-        var rayFromX = (posX + fieldWidth*rayCastState.posX );
-        var rayFromY = (posY + fieldHeight*rayCastState.posY);
-        var rayToX = (rayFromX + fieldWidth*rayCastState.dirX);
-        var rayToY = (rayFromY + fieldWidth*rayCastState.dirY);
+        var rayFromX = (posX + fieldWidth*gameState.posX() );
+        var rayFromY = (posY + fieldHeight*gameState.posY());
+        var rayToX = (rayFromX + fieldWidth*gameState.dirX());
+        var rayToY = (rayFromY + fieldWidth*gameState.dirY());
         g.drawLine((int)rayFromX, (int)rayFromY, (int)rayToX, (int)rayToY);
 
         // frustrum
-        var frustrumFromX = rayToX - fieldWidth*rayCastState.ncpX;
-        var frustrumFromY = rayToY - fieldWidth*rayCastState.ncpY;
-        var frustrumToX = rayToX + fieldWidth*rayCastState.ncpX;
-        var frustrumToY = rayToY + fieldWidth*rayCastState.ncpY;
+        var frustrumFromX = rayToX - fieldWidth*gameState.ncpX();
+        var frustrumFromY = rayToY - fieldWidth*gameState.ncpY();
+        var frustrumToX = rayToX + fieldWidth*gameState.ncpX();
+        var frustrumToY = rayToY + fieldWidth*gameState.ncpY();
         g.drawLine((int)frustrumFromX, (int)frustrumFromY, (int)frustrumToX, (int)frustrumToY);
         g.drawLine((int)rayFromX, (int)rayFromY, (int)frustrumFromX, (int)frustrumFromY);
         g.drawLine((int)rayFromX, (int)rayFromY, (int)frustrumToX, (int)frustrumToY);
@@ -641,11 +449,11 @@ public class App extends JFrame {
 
 
     private void drawGameField3D_rsh(Graphics2D g, Optional<List<Pair<Double,Double>>> trace) {
-        var map = rayCastState.map;
+//        var map = gameState.map;
 
-        double posX   = rayCastState.posX, posY   = rayCastState.posY;  //x and y start position
-        double dirX   = rayCastState.dirX, dirY   = rayCastState.dirY; //idirection vector
-        double planeX = rayCastState.ncpX, planeY = rayCastState.ncpY; //the 2d raycaster version of camera plane
+        double posX   = gameState.posX(), posY   = gameState.posY();  //x and y start position
+        double dirX   = gameState.dirX(), dirY   = gameState.dirY(); //idirection vector
+        double planeX = gameState.ncpX(), planeY = gameState.ncpY(); //the 2d raycaster version of camera plane
 
         //double time = 0; //time of current frame
         //double oldTime = 0; //time of previous frame
@@ -670,7 +478,8 @@ public class App extends JFrame {
             //var maybeCastRes = rc.rayCastToGrid(pos, rayDir, (c) -> (map[c.snd()][c.fst()] != WorldMap.SPACE));
             var maybeCastRes = RayCaster.rayCastUntilHit(pos, rayDir,
                                                          WorldMap.mapWidth, WorldMap.mapHeight,
-                                                         (c) -> (map[c.snd()][c.fst()] != WorldMap.SPACE));
+                                                         //(c) -> (map[c.snd()][c.fst()] != WorldMap.SPACE));
+                                                         (c) -> gameState.isSpace(c.fst(), c.snd()));
             if(maybeCastRes.isPresent()) {
                 var castRes  = maybeCastRes.get();
                 var castPos  = castRes.fst();
@@ -706,18 +515,18 @@ public class App extends JFrame {
                     drawEnd = h-1;
                 }
 
-                //choose wall color
-                var cell = map[castCell.snd()][castCell.fst()];
 
                 Vec2d _castCell = Vec2d.fromPair(castCell);
                 double castCellXRaw = castPos
                                                 .sub(_castCell)
-                                                .map(v ->  Math.abs(Side.Hor == castSide ? v.x() : v.y()));
+                                                .map(v ->  Math.abs(Side.Hor == castSide ? v.x() : 1 - v.y())); // "1 -"" to avoid mirror effect with textures 
                 double castCellX = castCellXRaw * textureWidth;
                 double castCellStripeWidth = 1;
                 double texStart = MathUtils.lerp(0, textureHeight, factorStart);
                 double texEnd = MathUtils.lerp(0, textureHeight, factorEnd);
 
+                //choose wall color
+                var cell = gameState.map(castCell.fst(), castCell.snd());
                 switch (cell) {
                     case WorldMap.SPACE:
                         //transparent
@@ -753,7 +562,8 @@ public class App extends JFrame {
                     break;
                 
                     default:
-                        Color color = worldFieldToColor(map[castCell.snd()][castCell.fst()]);
+                        // if no texture maybe a color is provided
+                        Color color = worldFieldToColor(cell);
 
                         //give x and y sides different brightness
                         if(castSide == Side.Ver) {color = color.darker();}

@@ -1,4 +1,4 @@
-package de.rsh.rycst.utils;
+package de.rsh.utils;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Consumer;

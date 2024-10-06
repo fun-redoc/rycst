@@ -1,4 +1,4 @@
-package de.rsh.rycst.utils;
+package de.rsh.utils;
 import java.util.function.*;
 
 public record Tupl3<T,S,R>(T t, S s, R r) {
