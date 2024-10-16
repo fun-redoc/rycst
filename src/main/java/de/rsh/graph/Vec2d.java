@@ -25,7 +25,17 @@ public final class Vec2d implements Cloneable {
         return new Vec2d(pair.fst().doubleValue(), pair.snd().doubleValue());
     }
 
-    public Vec2d(double x, double y) {
+    /**
+     * public constructor for 2 dim vectors
+     * @param x
+     * @param y
+     * @return instance of Vec2d
+     */
+    public static Vec2d c(double x, double y) {
+        return new Vec2d(x, y);
+    }
+
+    private Vec2d(double x, double y) {
         this.x = x;
         this.y = y;
         this.alreadyNormalized = false;
@@ -80,6 +90,12 @@ public final class Vec2d implements Cloneable {
     public Vec2d normalized() {
         return alreadyNormalized ? this :  this.scaled(1/this.len());
     }
+    public Vec2d componentMap(Function<Double,Double> f) {
+        return new Vec2d(f.apply(x), f.apply(y));
+    }
+    public Vec2d floor() {
+        return componentMap(Math::floor);
+    }
     public Vec2d turnByAngleOf(double rad) { 
         var sin_rad = Math.sin(rad);
         var cos_rad = Math.cos(rad);
@@ -91,7 +107,12 @@ public final class Vec2d implements Cloneable {
         //    return Math.sqrt(dx * dx + dy * dy);
         return Math.hypot(dx, dy);
     }
-    public boolean isNear(Vec2d p, double r){ return distTo(p) <= r; }
+    //public boolean isNear(Vec2d p, double r){ return distTo(p) <= r; }
+    public boolean isNear(Vec2d p, double r){
+        var dx = x - p.x;
+        var dy = y - p.y;
+        return dx*dx+dy*dy <= r*r; 
+    }
 
     public double dot(Vec2d other) { return other.x()*this.x() + other.y()*this.y(); }
 

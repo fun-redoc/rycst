@@ -15,7 +15,9 @@ public enum Texture {
     RED_GRADIENT() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,7).get(); }},
     FLAT_GRAY_TEXTURE() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,8).get(); }},
     HORIZ_BLUE() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,9).get(); }},
-    VERT_YELLO() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,10).get(); }};
+    VERT_YELLO() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,10).get(); }},
+    TEST2() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,11).get(); }},
+    BLUE_GRAD() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,12).get(); }};
 
     public record Image(int width, int height, int[] arr) {
         public int pix(int x, int y) {
@@ -108,7 +110,8 @@ class TextureInternal {
 
     static volatile Map<Pair<Integer,Integer>, TextureInternal> cache = Collections.synchronizedMap(new HashMap<>());
     private TextureInternal(int texWidth, int texHeight) {
-        final int NUM_TEXTURES = 11;
+        System.out.println("creating new Texture");
+        final int NUM_TEXTURES = 13;
         this.img = new Texture.Image[NUM_TEXTURES];
         var texture = new int[NUM_TEXTURES][texHeight*texHeight];
         //generate some textures
@@ -136,7 +139,9 @@ class TextureInternal {
             texture[i++][texWidth * y + x] = 128 + 256 * 128 + 65536 * 128; //flat grey texture
             texture[i++][texWidth * y + x] = (y/16) % 2 == 0 ? 0x0000FF : 0; // TESTIMAGE Horizontal lines
             texture[i++][texWidth * y + x] = (x/16) % 2 == 0 ? 0xFFFF00 : 0; // TESTIMAGE VErtical yellow / black
-            assert(i == NUM_TEXTURES);
+            texture[i++][texWidth * y + x] = (x / 2) % 4 == 0 ? 0x0000FF : (y / 2) % 4 == 0 ? 0xFF00FF : 0; // raster
+            texture[i++][texWidth * y + x] = 0x0000FF * ((texHeight - y)*0x99/texHeight); //blue gradient
+            assert (i == NUM_TEXTURES);
         }
         for(int i=0; i<NUM_TEXTURES; i++) {
             this.img[i] = new Texture.Image(texWidth, texHeight, texture[i]);

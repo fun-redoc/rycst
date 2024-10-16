@@ -11,7 +11,7 @@ public class Loop {
                     boolean running = true;
                     try {
                         var last = System.nanoTime();
-                        Thread.sleep(frameDurationNanos/1000);
+                        Thread.sleep(frameDurationNanos/1000_000);
                         while(running) {
                             var dt = System.nanoTime()-last;
                             var t = System.nanoTime();       
@@ -20,7 +20,10 @@ public class Loop {
                             app.render();
                             var duration = System.nanoTime() - t;
                             if(duration < frameDurationNanos) {
-                                Thread.sleep((frameDurationNanos - duration)/1000); // sleep thre remainig milli secotds
+                                var timeLeftToSleep = (frameDurationNanos - duration);
+                                Thread.sleep(timeLeftToSleep/1000_000); // sleep thre remainig milli secotds
+                            } else {
+                                System.err.println("frame to long");
                             }
                         }
                     } catch(InterruptedException e) {

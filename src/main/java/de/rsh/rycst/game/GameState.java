@@ -2,6 +2,7 @@ package de.rsh.rycst.game;
 
 import java.util.Map;
 import java.util.function.Function;
+import java.util.Optional;
 
 import de.rsh.utils.Pair;
 
@@ -47,6 +48,7 @@ public class GameState {
     long curTime = 0; //time of current frame
     long dt = 0; //time passed till previous frame
 
+
     int[][] map;
 
     public GameState(double posX, double posY, int[][] map) {
@@ -54,6 +56,12 @@ public class GameState {
         this.posY = posY;
         this.map = map;
     }
+
+    public Optional<Double> getFPS() {
+        if(dt==0) return Optional.empty();
+        return Optional.of(1/nanoToSecond(dt));
+    }
+
     public double posX() {
         return posX;
     }
@@ -133,7 +141,7 @@ public class GameState {
         return this;
     }
     private double nanoToSecond(long ns) {
-        return (double)ns/1000000000D; //(10^-9)
+        return (double)ns/1000_000_000D; //(10^-9)
     }
     private State transitionOnEvent(Event e) {
         var nextState = transition.get(new Pair<State,Event>(state, e));

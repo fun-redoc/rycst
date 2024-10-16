@@ -7,6 +7,8 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.WindowAdapter;
@@ -31,6 +33,8 @@ import de.rsh.game.Loop;
 import de.rsh.game.RayCaster;
 import de.rsh.game.Texture;
 import de.rsh.game.RayCaster.Side;
+import de.rsh.graph.Vec2Arena;
+import de.rsh.graph.Vec2Arena2;
 import de.rsh.graph.Vec2d;
 import de.rsh.rycst.game.GameState;
 import de.rsh.rycst.game.WorldMap;
@@ -65,9 +69,15 @@ public class App extends JFrame {
     private final int  textureHeight = 64;
     private final int  textureWidth = 64;
     public final long FPS=60; // frame per second
-    public final long FRAME_DURATION_NANOS=1000*1000/FPS; // nano secds
+    //public final long FRAME_DURATION_NANOS=1000*1000/FPS; // nano secds
+    public final long FRAME_DURATION_NANOS=1000_000_000/FPS; // nano secds
     private Thread loop;
     private GameState gameState;
+    private Vec2Arena v2 = new Vec2Arena(10000000);
+    private Vec2Arena2 a2 = new Vec2Arena2(10000000);
+    private float[] hsbBuf = new float[3];
+    private  volatile Object floorImgSync = new Object(); // will be resized in ui thread (on resize) an used on loop thread...may cause issues
+    private  volatile BufferedImage floorImg; // will be resized in ui thread (on resize) an used on loop thread...may cause issues
 
     private BufferedImage texRedX = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
     {
@@ -89,10 +99,30 @@ public class App extends JFrame {
         var texture = Texture.HORIZ_BLUE.get(textureWidth,textureHeight);
         texHrzBlu.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
     }
+    private BufferedImage texGray = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.SLOPED_GRAYSCALE.get(textureWidth,textureHeight);
+        texGray.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
+    private BufferedImage texXorGray = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.XOR_GRAYSCALE.get(textureWidth,textureHeight);
+        texXorGray.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
     private BufferedImage texTest1 = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
     {
         var texture = Texture.TEST1.get(textureWidth,textureHeight);
         texTest1.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
+    private BufferedImage texTest2 = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.TEST2.get(textureWidth,textureHeight);
+        texTest2.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
+    private BufferedImage texBlueGrad = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.BLUE_GRAD.get(textureWidth,textureHeight);
+        texBlueGrad.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
     }
 
     private static final int INITIAL_QUEUE_CAPACITY = 11;
@@ -104,11 +134,18 @@ public class App extends JFrame {
                                                 } 
                                              });
     private JComponent canvas;
+    private double frustrumLen = Math.sqrt(WorldMap.mapHeight*WorldMap.mapHeight + WorldMap.mapWidth*WorldMap.mapWidth); // the diagonal
 
     private App() {
-        initSwing();
-        gameState = new GameState(WorldMap.mapWidth/2.0, WorldMap.mapHeight/2.0, WorldMap.map.clone());
-        this.loop = Loop.loop(FRAME_DURATION_NANOS).apply(this);
+        var that = this;
+       SwingUtilities.invokeLater(new Runnable() {
+			public void run() {
+                initSwing();
+                setVisible(true); 
+                gameState = new GameState(WorldMap.mapWidth/2.0, WorldMap.mapHeight/2.0, WorldMap.map.clone());
+                loop = Loop.loop(FRAME_DURATION_NANOS).apply(that);
+			}
+		});
     }
     private void initSwing() {
         // Menu
@@ -164,20 +201,32 @@ public class App extends JFrame {
         this.setJMenuBar(menuBar);
 
         // GAme Panel
-        setTitle("SDCS");
+        final var title = "RYCST";
+        setTitle(title);
         setSize(1024, 800);
         setLocationRelativeTo(null);
         setResizable(true);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
+        var that = this;
         canvas = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
+                that.setTitle(String.format("%s | Frame Rate: %s", title, gameState.getFPS().map(f->String.format("%.1f", f)).orElse("-")));
                 draw((Graphics2D)g);
             }
         };
         add(canvas);
-        var that = this;
+        canvas.addComponentListener(new ComponentAdapter() {
+           public void componentResized(ComponentEvent e) {
+                floorImg =  null;
+                synchronized(floorImgSync) {
+                    floorImg = new BufferedImage(canvas.getWidth(), canvas.getHeight(), BufferedImage.TYPE_INT_RGB);
+                }
+           }
+        });
+
+
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent evt) {
@@ -243,12 +292,13 @@ public class App extends JFrame {
     }
 
     public static void main(String[] argv) {
-       // create ui on ui thread
-       SwingUtilities.invokeLater(new Runnable() {
-			public void run() {
-                new App().setVisible(true); 
-			}
-		});
+        new App();
+//       // create ui on ui thread
+//       SwingUtilities.invokeLater(new Runnable() {
+//			public void run() {
+//                new App().setVisible(true); 
+//			}
+//		});
     }
      
     public void start() {
@@ -309,11 +359,15 @@ public class App extends JFrame {
     }
 
     public  void draw(Graphics2D g){
-//        drawBackground(g);
-        drawForeground(g);
+        if(floorImg == null) return; 
+        synchronized(floorImgSync)  {
+    //        drawBackground(g);
+            drawForeground(g);
+        }
     }
     private void drawForeground(Graphics2D g) {
         g.setColor(new Color(0xff,0xff,0xff,255));
+        drawFloor(g);
         var trace = Optional.of((List<Pair<Double,Double>>)new ArrayList<Pair<Double,Double>>());
         //drawGameField3D(g, Optional.empty());
         drawGameField3D_rsh(g, trace);
@@ -335,7 +389,7 @@ public class App extends JFrame {
     @SuppressWarnings("unused") // I leave the lodev implementation as a reference and best practices
     private void drawGameField3D(Graphics2D g, Optional<List<Pair<Double,Double>>> trace) {
         RayCaster
-        .drawGameField3D_lodev(getWidth(), getHeight(),
+        .drawGameField3D_lodev(canvas.getWidth(),canvas.getHeight(),
                                gameState.posX(), gameState.posY(),
                                gameState.dirX(), gameState.dirY(),
                                gameState.ncpX(), gameState.ncpY(),
@@ -360,8 +414,8 @@ public class App extends JFrame {
     private void drawGameFieldMiniMap(Graphics2D g, final Color backColor, final int posX, final int posY, final double scale, Optional<List<Pair<Double,Double>>> trace) {
         final var saveColor = g.getColor();
         //final var map = gameState.map;
-        final var w = scale*getWidth();
-        final var h = scale*getHeight();
+        final var w = scale*canvas.getWidth();
+        final var h = scale*canvas.getHeight();
         final var fieldHeight = h/gameState.mapHeight();
         final var fieldWidth = w/gameState.mapWidth();
         g.setColor(backColor);
@@ -457,12 +511,12 @@ public class App extends JFrame {
 
         //double time = 0; //time of current frame
         //double oldTime = 0; //time of previous frame
-        var w = getWidth();
-        var h = getHeight();
+        var w = (double)canvas.getWidth();
+        var h = (double)canvas.getHeight();
 
-        var pos = new Vec2d(posX, posY);
-        var dir = new Vec2d(dirX, dirY);
-        var ncp = new Vec2d(planeX, planeY);
+        var pos = Vec2d.c(posX, posY);
+        var dir = Vec2d.c(dirX, dirY);
+        var ncp = Vec2d.c(planeX, planeY);
         var ncpFrom = pos.add(dir).sub(ncp);
         var ncpTo = pos.add(dir).add(ncp);
         var ncpDir = ncpTo.sub(ncpFrom);
@@ -491,28 +545,31 @@ public class App extends JFrame {
                 }
 
                 // now I need the perpedicular distance between castPos and the camera plane 
-                var perpDist = castPos.perpDistToLine(pos, ncp);
+                double perpDist = castPos.perpDistToLine(pos, ncp);
                 //var perpDist = castPos.sub(pos).len(); <- gives fisheye effect
 
                 //Calculate height of line to draw on screen
-                int lineHeight = (int)(h / perpDist);
+                double lineHeight = ((double)h / perpDist);
 
                 //calculate lowest and highest pixel to fill in current stripe
-                int drawStartClip = 0;
-                int drawEndClip = 0;
+                double drawStartClip = 0;
+                double drawEndClip = 0;
                 double factorStart = 0;
                 double factorEnd = 1;
-                int drawStart = -lineHeight / 2 + h / 2;
-                int drawEnd = lineHeight / 2 + h / 2;
+                double drawStart = -lineHeight / 2 + h / 2;
+                double drawEnd = lineHeight / 2 + h / 2;
                 if(drawStart < 0) {
                     drawStartClip = -drawStart;
-                    factorStart = drawStartClip/(double)lineHeight;
+                    factorStart = drawStartClip/lineHeight;
                     drawStart = 0;
                 }
                 if(drawEnd >= h) {
-                    drawEndClip = drawEnd - (h-1);
-                    factorEnd = 1.0 - drawEndClip/(double)lineHeight;
-                    drawEnd = h-1;
+                    //drawEndClip = drawEnd - (h-1.0);
+                    //factorEnd = 1.0 - drawEndClip/lineHeight;
+                    //drawEnd = h-1;
+                    drawEndClip = drawEnd - (h);
+                    factorEnd = 1.0 - drawEndClip/lineHeight;
+                    drawEnd = h;
                 }
 
 
@@ -533,29 +590,29 @@ public class App extends JFrame {
                         break;
                     case WorldMap.PILAR:
                     {
-                        g.drawImage(texVertYello, x, drawStart, x+1, drawEnd,
+                        g.drawImage(texVertYello, x, (int)drawStart, x+1, (int)drawEnd,
                                     (int)castCellX, 0, (int)(castCellX + castCellStripeWidth), textureHeight,
                                     null);
                     }
                     break;
                     case WorldMap.OUTERWALL:
                     {
-                        g.drawImage(texHrzBlu, x, drawStart, x+1, drawEnd,
+                        g.drawImage(texHrzBlu, x, (int)drawStart, x+1, (int)drawEnd,
                                     (int)castCellX, 0, (int)(castCellX + castCellStripeWidth), textureHeight,
                                     null);
                     }
                     break;
                     case WorldMap.HOUSEWALL:
                     {
-                        g.drawImage(texRedBrick, x, drawStart, x+1, drawEnd,
+                        g.drawImage(texRedBrick, x, (int)drawStart, x+1, (int)drawEnd,
                                     (int)castCellX, (int)(texStart), (int)(castCellX + castCellStripeWidth), (int)(texEnd),
                                     null);
                     }
                     break;
                     case WorldMap.COTTAGEWALL:
                     {
-                        //g.drawImage(texRedX, x, drawStart, x+1, drawEnd,
-                        g.drawImage(texTest1, x, drawStart, x+1, drawEnd,
+                        //g.drawImage(texRedX, x, (int)drawStart, x+1, (int)drawEnd,
+                        g.drawImage(texTest1, x,(int)Math.round(drawStart), x+1,(int)Math.round(drawEnd),
                                     (int)castCellX, (int)(texStart), (int)(castCellX + castCellStripeWidth), (int)(texEnd),
                                     null);
                     }
@@ -570,7 +627,7 @@ public class App extends JFrame {
 
                         //draw the pixels of the stripe as a vertical line
                         g.setColor(color);
-                        g.drawLine(x, drawStart, x, drawEnd);
+                        g.drawLine(x, (int)drawStart, x, (int)drawEnd);
                         break;
                 }
             };
@@ -578,5 +635,184 @@ public class App extends JFrame {
             ncpTraverser = ncpTraverser.add(ncpStride);
         }
 
+    }
+    private void drawFloor_GC(Graphics2D g) {
+
+        double posX   = gameState.posX(), posY   = gameState.posY();  //x and y start position
+        double dirX   = gameState.dirX(), dirY   = gameState.dirY(); //idirection vector
+        double planeX = gameState.ncpX(), planeY = gameState.ncpY(); //the 2d raycaster version of camera plane
+
+        var w = canvas.getWidth();
+        var h = canvas.getHeight();
+
+        var pos = Vec2d.c(posX, posY);
+        var dir = Vec2d.c(dirX, dirY);
+        var ncp = Vec2d.c(planeX, planeY);
+
+        
+        var near1 = pos.add(dir).sub(ncp);
+        var near2 = pos.add(dir).add(ncp);
+
+        var far1 = near1.add(near1.sub(pos).normalized().scaled(frustrumLen));
+        var far2 = near2.add(near2.sub(pos).normalized().scaled(frustrumLen));
+
+        var horz1 = far1.sub(near1).normalized();
+        var horz2 = far2.sub(near2).normalized();
+
+        int stride = 2;
+
+        for(int y=0; y < h/2; y+=stride ) {
+            //double sampleDepth = (double)y/((double)h/2.0);
+            double sampleDepth = ((double)h)/(double)(y); // flipped because of perspective projection rules
+            Vec2d start = horz1.scaled(sampleDepth).add(near1);
+            Vec2d end = horz2.scaled(sampleDepth).add(near2);
+            for(int x=0; x<w; x+=stride) {
+                double sampleWidth = (double)x/((double)w);
+                //double sampleWidth = ((double)w)/(double)x;
+                Vec2d sample = end.sub(start).scaled(sampleWidth).add(start);
+                Vec2d sampleGridPart = sample.sub(sample.floor());
+                Vec2d sampleTextureCoords = sampleGridPart.mul(Vec2d.c(textureWidth,textureHeight));
+                var rgb = texXorGray.getRGB((int)sampleTextureCoords.x(), (int)sampleTextureCoords.y());
+                // make blurier / darker tehbigger y value
+                var color = new Color(rgb);
+                g.setColor(color);
+                g.fillRect(x, y+h/2, stride, stride);
+
+                rgb = texBlueGrad.getRGB((int)sampleTextureCoords.x(), (int)sampleTextureCoords.y());
+                // make blurier / darker tehbigger y value
+                color = new Color(rgb);
+                g.setColor(color);
+                g.fillRect(x, h/2 - y, stride, stride);
+            }
+        }
+
+    }
+    private void drawFloor_Mem(Graphics2D g) {
+        var rememberClearPoint = v2.clearPoint();
+
+        double posX   = gameState.posX(), posY   = gameState.posY();  //x and y start position
+        double dirX   = gameState.dirX(), dirY   = gameState.dirY(); //idirection vector
+        double planeX = gameState.ncpX(), planeY = gameState.ncpY(); //the 2d raycaster version of camera plane
+
+        var w = canvas.getWidth();
+        var h = canvas.getHeight();
+
+        var pos = v2.c(posX, posY);
+        var dir = v2.c(dirX, dirY);
+        var ncp = v2.c(planeX, planeY);
+
+        
+        //var near1 = pos.add(dir).sub(ncp);
+        var near1 = v2.sub(v2.add(pos, dir),ncp);
+        //var near2 = pos.add(dir).add(ncp);
+        var near2 = v2.add(v2.add(pos, dir),ncp);
+
+        //var far1 = near1.add(near1.sub(pos).normalized().scaled(frustrumLen));
+        var far1 = v2.add(near1, v2.scaled(v2.normalized(v2.sub(near1,pos)), frustrumLen));
+        //var far2 = near2.add(near2.sub(pos).normalized().scaled(frustrumLen));
+        var far2 = v2.add(near2, v2.scaled(v2.normalized(v2.sub(near2,pos)), frustrumLen));
+
+        //var horz1 = far1.sub(near1).normalized();
+        var horz1 = v2.normalized(v2.sub(far1,near1));
+        //var horz2 = far2.sub(near2).normalized();
+        var horz2 = v2.normalized(v2.sub(far2,near2));
+
+        int stride = 2;
+
+        //for(int y=0; y < h/2; y+=stride ) {
+        for(int y=1; y < h/2; y+=stride ) {
+            //double sampleDepth = (double)y/((double)h/2.0);
+            double sampleDepth = ((double)h)/(double)(y); // flipped because of perspective projection rules
+            var start = v2.add(v2.scaled(horz1,sampleDepth),near1);
+            var end = v2.add(v2.scaled(horz2,sampleDepth),near2);
+            for(int x=0; x<w; x+=stride) {
+                double sampleWidth = (double)x/((double)w);
+                //double sampleWidth = ((double)w)/(double)x;
+                var sample = v2.add(v2.scaled(v2.sub(end,start),sampleWidth),start);
+                var sampleGridPart = v2.sub(sample,v2.floor(sample));
+                var sampleTextureCoords = v2.mul(sampleGridPart, v2.c(textureWidth,textureHeight));
+                var rgb = texXorGray.getRGB((int)v2.x(sampleTextureCoords), (int)v2.y(sampleTextureCoords));
+                // make blurier / darker tehbigger y value
+                var color = new Color(rgb);
+                g.setColor(color);
+                g.fillRect(x, y+h/2, stride, stride);
+
+                rgb = texBlueGrad.getRGB((int)v2.x(sampleTextureCoords), (int)v2.y(sampleTextureCoords));
+                // make blurier / darker tehbigger y value
+                color = new Color(rgb);
+                g.setColor(color);
+                g.fillRect(x, h/2 - y, stride, stride);
+            }
+        }
+        v2.clearFrom(rememberClearPoint);
+    }
+    private void drawFloor(Graphics2D g) {
+        a2.clear();
+
+        double posX   = gameState.posX(), posY   = gameState.posY();  //x and y start position
+        double dirX   = gameState.dirX(), dirY   = gameState.dirY(); //idirection vector
+        double planeX = gameState.ncpX(), planeY = gameState.ncpY(); //the 2d raycaster version of camera plane
+
+        var w = floorImg.getWidth();
+        var h = floorImg.getHeight();
+
+        var pos = a2.c(posX, posY);
+        var dir = a2.c(dirX, dirY);
+        var ncp = a2.c(planeX, planeY);
+
+        
+        //var near1 = pos.add(dir).sub(ncp);
+        var near1 = a2.sub(a2.add(pos, dir),ncp);
+        //var near2 = pos.add(dir).add(ncp);
+        var near2 = a2.add(a2.add(pos, dir),ncp);
+
+        //var far1 = near1.add(near1.sub(pos).normalized().scaled(frustrumLen));
+        var far1 = a2.add(near1, a2.scaled(a2.normalized(a2.sub(near1,pos)), frustrumLen));
+        //var far2 = near2.add(near2.sub(pos).normalized().scaled(frustrumLen));
+        var far2 = a2.add(near2, a2.scaled(a2.normalized(a2.sub(near2,pos)), frustrumLen));
+
+        //var horz1 = far1.sub(near1).normalized();
+        var horz1 = a2.normalized(a2.sub(far1,near1));
+        //var horz2 = far2.sub(near2).normalized();
+        var horz2 = a2.normalized(a2.sub(far2,near2));
+
+
+        var halfScreenH = h/2;
+        var dblHalfScreenH = (double)halfScreenH;
+        for(int y=1; y < halfScreenH; y+=1 ) {
+            //double sampleDepth = (double)y/((double)h/2.0);
+            double dblY = (double)y;
+            double sampleDepth = ((double)h)/dblY; // flipped because of perspective projection rules
+            var start = a2.add(a2.scaled(horz1,sampleDepth),near1);
+            var end = a2.add(a2.scaled(horz2,sampleDepth),near2);
+            for(int x=0; x<w; x+=1) {
+                double sampleWidth = (double)x/((double)w);
+                //double sampleWidth = ((double)w)/(double)x;
+                var sample = a2.add(a2.scaled(a2.sub(end,start),sampleWidth),start);
+                var sampleGridPart = a2.sub(sample,a2.floor(sample));
+                var sampleTextureCoords = a2.mul(sampleGridPart, a2.c(textureWidth,textureHeight));
+                var rgb_raw = texXorGray.getRGB((int)a2.x(sampleTextureCoords), (int)a2.y(sampleTextureCoords));
+                Color.RGBtoHSB((rgb_raw>>16)&0xFF, (rgb_raw>>8)&0xFF, (rgb_raw>>0)&0xFF, hsbBuf);
+                var distanceMakeDarkerFactor = (dblY)/(dblHalfScreenH);
+                hsbBuf[2] *= distanceMakeDarkerFactor;
+                var rgb = Color.HSBtoRGB(hsbBuf[0], hsbBuf[1], hsbBuf[2]);
+                try {
+                        floorImg.setRGB(x,y+halfScreenH, rgb);
+                } catch (Exception e) {
+                    System.err.printf("floor.w:%d, floor.h:%d, width:%d, height:%d, x:%d, y:%d\n", floorImg.getWidth(), floorImg.getHeight(), w,h,x,y+h/2);
+                }
+
+                rgb_raw = texBlueGrad.getRGB((int)a2.x(sampleTextureCoords), (int)a2.y(sampleTextureCoords));
+                Color.RGBtoHSB((rgb_raw>>16)&0xFF, (rgb_raw>>8)&0xFF, (rgb_raw>>0)&0xFF, hsbBuf);
+                hsbBuf[2] *= distanceMakeDarkerFactor;
+                rgb = Color.HSBtoRGB(hsbBuf[0], hsbBuf[1], hsbBuf[2]);
+                try {
+                    floorImg.setRGB(x,h/2-y, rgb);
+                } catch (Exception e) {
+                    System.err.printf("floor.w:%d, floor.h:%d, width:%d, height:%d, x:%d, y:%d\n", floorImg.getWidth(), floorImg.getHeight(), w,h,x,y+h/2);
+                }
+            }
+        }
+        g.drawImage(floorImg, null, null);
     }
 }

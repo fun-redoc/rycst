@@ -61,7 +61,7 @@ public class RayCaster {
             var b = v.y() - m*v.x();
             y= b + xSnappedToGrid*m;
         }
-        var raySnap1 =  new Vec2d(xSnappedToGrid, y);  // snapped vertically
+        var raySnap1 =  Vec2d.c(xSnappedToGrid, y);  // snapped vertically
         // y1 = m*x1 + b => y1 - b = m*x1 => 
         // x1 = (y1 - b)/m
         if(d.y() == 0) {
@@ -71,7 +71,7 @@ public class RayCaster {
             var b = v.y() - m*v.x();
             x = (ySnappedToGrid - b) / m;
         }
-        var raySnap2 =  new Vec2d(x, ySnappedToGrid); // snapped horizontally
+        var raySnap2 =  Vec2d.c(x, ySnappedToGrid); // snapped horizontally
         if( raySnap1.distTo(from) <= raySnap2.distTo(from)) {
             return new Pair<Vec2d, Side>(raySnap1, Side.Ver);
         } else {
