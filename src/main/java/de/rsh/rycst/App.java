@@ -5,6 +5,7 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
@@ -37,6 +38,7 @@ import de.rsh.graph.Vec2Arena;
 import de.rsh.graph.Vec2Arena;
 import de.rsh.graph.Vec2d;
 import de.rsh.rycst.game.GameState;
+import de.rsh.rycst.game.Sprite;
 import de.rsh.rycst.game.WorldMap;
 import de.rsh.utils.MathUtils;
 import de.rsh.utils.Pair;
@@ -73,14 +75,22 @@ public class App extends JFrame {
     public final long FRAME_DURATION_NANOS=1000_000_000/FPS; // nano secds
     private Thread loop;
     private GameState gameState;
-    private Vec2Arena a2 = new Vec2Arena(10000000);
+    private Vec2Arena a1 = new Vec2Arena(100); // sprites arena
+    private Vec2Arena a2 = new Vec2Arena(10000000); // floor and ceiling rendering Auxiliary Vectors Arena
     private float[] hsbBuf = new float[3];
 
-    private  volatile Object floorImgSync = new Object(); // will be resized in ui thread (on resize) an used on loop thread...may cause issues
-    private  volatile BufferedImage floorImg; // will be resized in ui thread (on resize) an used on loop thread...may cause issues
+    private volatile Object sceneImgSync = new Object(); // will be resized in ui thread (on resize) an used on loop thread...may cause issues
+    private volatile BufferedImage sceneImg; // will be resized in ui thread (on resize) an used on loop thread...may cause issues
+    private volatile Graphics2D sceneGraphics; // will be resized in ui thread (on resize) an used on loop thread...may cause issues
+
 
     private volatile double[] zBuffer = null; // will be resized on ui threads resize event
 
+    private BufferedImage texGreenO = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
+    {
+        var texture = Texture.GREEN_OVAL.get(textureWidth,textureHeight);
+        texGreenO.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
+    }
     private BufferedImage texRedX = new BufferedImage(textureWidth, textureHeight, BufferedImage.TYPE_INT_RGB);
     {
         var texture = Texture.RED_WITH_BLACK_CROSS.get(textureWidth,textureHeight);
@@ -126,6 +136,8 @@ public class App extends JFrame {
         var texture = Texture.BLUE_GRAD.get(textureWidth,textureHeight);
         texBlueGrad.setRGB(0, 0, texture.width(), texture.height(), texture.arr(), 0, texture.width());
     }
+
+    private   Sprite<Integer> sprite =  new Sprite<Integer>(a1.c(6.5, 16.5), texGreenO);
 
     private static final int INITIAL_QUEUE_CAPACITY = 11;
     public PriorityBlockingQueue<GameEvent> eventQueue =
@@ -221,11 +233,12 @@ public class App extends JFrame {
         add(canvas);
         canvas.addComponentListener(new ComponentAdapter() {
            public void componentResized(ComponentEvent e) {
-                floorImg =  null;
-                synchronized(floorImgSync) {
-//                    System.out.printf("resizing %d, %d\n",e.getComponent().getWidth(), e.getComponent().getHeight());
-//                    System.out.printf("resizing %d, %d\n",canvas.getWidth(), canvas.getHeight());
-                    floorImg = new BufferedImage(e.getComponent().getWidth(), e.getComponent().getHeight(), BufferedImage.TYPE_INT_RGB);
+                sceneImg = null;
+                synchronized(sceneImgSync) {
+                    sceneImg = new BufferedImage(e.getComponent().getWidth(), e.getComponent().getHeight(), BufferedImage.TYPE_INT_ARGB);
+                    sceneGraphics = sceneImg.createGraphics();
+                    sceneGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    sceneGraphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
                     zBuffer = new double[e.getComponent().getWidth()];
                 }
            }
@@ -364,10 +377,12 @@ public class App extends JFrame {
     }
 
     public  void draw(Graphics2D g){
-        if(floorImg == null) return; 
-        synchronized(floorImgSync)  {
+        if(sceneImg == null) return; 
+        synchronized(sceneImgSync)  {
     //        drawBackground(g);
-            drawForeground(g);
+            drawForeground(sceneGraphics);
+            g.drawImage(sceneImg, null, null);
+
         }
     }
     private void drawForeground(Graphics2D g) {
@@ -521,9 +536,9 @@ public class App extends JFrame {
         var w = (double)width;
         var h = (double)canvas.getHeight();
 
-        var pos = Vec2d.c(posX, posY);
-        var dir = Vec2d.c(dirX, dirY);
-        var ncp = Vec2d.c(planeX, planeY);
+        var pos = new Vec2d(posX, posY);
+        var dir = new Vec2d(dirX, dirY);
+        var ncp = new Vec2d(planeX, planeY);
         var ncpFrom = pos.add(dir).sub(ncp);
         var ncpTo = pos.add(dir).add(ncp);
         var ncpDir = ncpTo.sub(ncpFrom);
@@ -647,6 +662,21 @@ public class App extends JFrame {
         }
 
     }
+
+    /**
+     * heuristics for rgba coded greenesh intensity value
+     * @param intensity signed double -1 to 1 
+     * @return
+     */
+    private int rgbaCodedIntensity(int intensity) {
+    var intensity_ = Math.clamp(intensity, -1, 1);
+    int alpha = (int)(Math.floor(128 * Math.abs(intensity_ + 1))) - 1 ; // 0..255
+    int R = intensity_ < 0 ? 0 : 255;
+    int G = R;
+    int B = intensity_ > 0 ? 0 : 255;
+    return  R<<32 | G << 16 | B << 8 | alpha;
+    }
+
     private void drawFloor(Graphics2D g) {
         a2.clear();
 
@@ -654,8 +684,8 @@ public class App extends JFrame {
         double dirX   = gameState.dirX(), dirY   = gameState.dirY(); //idirection vector
         double planeX = gameState.ncpX(), planeY = gameState.ncpY(); //the 2d raycaster version of camera plane
 
-        var w = floorImg.getWidth();
-        var h = floorImg.getHeight();
+        var w = sceneImg.getWidth();
+        var h = sceneImg.getHeight();
 
         var pos = a2.c(posX, posY);
         var dir = a2.c(dirX, dirY);
@@ -681,14 +711,16 @@ public class App extends JFrame {
         var halfScreenH = h/2;
         var dblHalfScreenH = (double)halfScreenH;
         for(int y=1; y < halfScreenH; y+=1 ) {
-            //double sampleDepth = (double)y/((double)h/2.0);
             double dblY = (double)y;
             double sampleDepth = ((double)h)/dblY; // flipped because of perspective projection rules
             var start = a2.add(a2.scaled(horz1,sampleDepth),near1);
             var end = a2.add(a2.scaled(horz2,sampleDepth),near2);
             for(int x=0; x<w; x+=1) {
                 double sampleWidth = (double)x/((double)w);
-                //double sampleWidth = ((double)w)/(double)x;
+
+                //var castPos = a2.c(sampleWidth*WorldMap.mapWidth, sampleDepth*WorldMap.mapHeight);
+                //double perpDist = a2.perpDistToLine(castPos, pos, ncp);
+
                 var sample = a2.add(a2.scaled(a2.sub(end,start),sampleWidth),start);
                 var sampleGridPart = a2.sub(sample,a2.floor(sample));
                 var sampleTextureCoords = a2.mul(sampleGridPart, a2.c(textureWidth,textureHeight));
@@ -698,9 +730,9 @@ public class App extends JFrame {
                 hsbBuf[2] *= distanceMakeDarkerFactor;
                 var rgb = Color.HSBtoRGB(hsbBuf[0], hsbBuf[1], hsbBuf[2]);
                 try {
-                        floorImg.setRGB(x,y+halfScreenH, rgb);
+                        sceneImg.setRGB(x,y+halfScreenH, rgb);
                 } catch (Exception e) {
-                    System.err.printf("floor.w:%d, floor.h:%d, width:%d, height:%d, x:%d, y:%d\n", floorImg.getWidth(), floorImg.getHeight(), w,h,x,y+h/2);
+                    System.err.printf("scene.w:%d, scene.h:%d, width:%d, height:%d, x:%d, y:%d\n", sceneImg.getWidth(), sceneImg.getHeight(), w,h,x,y+h/2);
                 }
 
                 rgb_raw = texBlueGrad.getRGB((int)a2.x(sampleTextureCoords), (int)a2.y(sampleTextureCoords));
@@ -708,16 +740,24 @@ public class App extends JFrame {
                 hsbBuf[2] *= distanceMakeDarkerFactor;
                 rgb = Color.HSBtoRGB(hsbBuf[0], hsbBuf[1], hsbBuf[2]);
                 try {
-                    floorImg.setRGB(x,h/2-y, rgb);
+                    sceneImg.setRGB(x,h/2-y, rgb);
                 } catch (Exception e) {
-                    System.err.printf("floor.w:%d, floor.h:%d, width:%d, height:%d, x:%d, y:%d\n", floorImg.getWidth(), floorImg.getHeight(), w,h,x,y+h/2);
+                    System.err.printf("scene.w:%d, scene.h:%d, width:%d, height:%d, x:%d, y:%d\n", sceneImg.getWidth(), sceneImg.getHeight(), w,h,x,y+h/2);
                 }
             }
         }
-        g.drawImage(floorImg, null, null);
     }
 
     private void drawSprite(Graphics2D g) {
+       int clearPoint = a1.clearPoint();
+       int pos = a1.c(gameState.posX(), gameState.posY());
+       int dir = a1.c(gameState.dirX(), gameState.dirY());
+       int ncp = a1.c(gameState.ncpX(), gameState.ncpY());
+       double perpDist = a1.perpDistToLine(sprite.getPos(), pos, ncp);
 
+       int cameraToSprite = a1.sub(sprite.getPos(), pos);
+
+
+       a1.clearFrom(clearPoint); // all vecors genrated in this methods are local temporary
     }
 }

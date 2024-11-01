@@ -23,7 +23,7 @@ import de.rsh.utils.Pair;
  *          var vsum = arena.add(v1,v2);
  *          System.out.println(arena.toString(vsum)); // should print [30,30]
  */
-public class Vec2Arena {
+public class Vec2Arena implements V2<Integer> {
     private int size;
     private double[] x;
     private double[] y;
@@ -63,7 +63,7 @@ public class Vec2Arena {
      * @param y
      * @return integer handle to the vector, dont mess araound with it, java urgently needs type aliases!!!
      */
-    public int c(double x, double y) {
+    public Integer c(double x, double y) {
         return c(x,y,false);
     }
     /**
@@ -78,6 +78,14 @@ public class Vec2Arena {
         this.isNormalized[last] =  isNormalized;
         return last++;
     }
+
+    public double x(Integer handle) {
+        return x[handle];
+    }
+    public double y(Integer handle) {
+        return y[handle];
+    }
+
     public double x(int handle) {
         return x[handle];
     }

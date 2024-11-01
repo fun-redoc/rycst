@@ -17,7 +17,8 @@ public enum Texture {
     HORIZ_BLUE() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,9).get(); }},
     VERT_YELLO() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,10).get(); }},
     TEST2() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,11).get(); }},
-    BLUE_GRAD() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,12).get(); }};
+    BLUE_GRAD() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,12).get(); }},
+    GREEN_OVAL() { public Image get(int texWidth, int texHeight) { return TextureInternal.getTexture(texWidth, texHeight,13).get(); }};
 
     public record Image(int width, int height, int[] arr) {
         public int pix(int x, int y) {
@@ -111,7 +112,7 @@ class TextureInternal {
     static volatile Map<Pair<Integer,Integer>, TextureInternal> cache = Collections.synchronizedMap(new HashMap<>());
     private TextureInternal(int texWidth, int texHeight) {
         System.out.println("creating new Texture");
-        final int NUM_TEXTURES = 13;
+        final int NUM_TEXTURES = 14;
         this.img = new Texture.Image[NUM_TEXTURES];
         var texture = new int[NUM_TEXTURES][texHeight*texHeight];
         //generate some textures
@@ -124,6 +125,11 @@ class TextureInternal {
             @SuppressWarnings("unused") int xcolor = x * 256 / texWidth;
             int ycolor = y * 256 / texHeight;
             int xycolor = y * 128 / texHeight + x * 128 / texWidth;
+            int xx=x*x;
+            int yy=y*y;
+            int xxyy = xx+yy;
+            int x1 = -texWidth/2 + x;
+            int y1 = -texHeight/2 + y;
             int i = 0;
             texture[i++][texWidth * y + x] = (1-test1[y][x])*0xFF0000;
             /* 
@@ -140,7 +146,8 @@ class TextureInternal {
             texture[i++][texWidth * y + x] = (y/16) % 2 == 0 ? 0x0000FF : 0; // TESTIMAGE Horizontal lines
             texture[i++][texWidth * y + x] = (x/16) % 2 == 0 ? 0xFFFF00 : 0; // TESTIMAGE VErtical yellow / black
             texture[i++][texWidth * y + x] = (x / 2) % 4 == 0 ? 0x0000FF : (y / 2) % 4 == 0 ? 0xFF00FF : 0; // raster
-            texture[i++][texWidth * y + x] = 0x0000FF * ((texHeight - y)*0x99/texHeight); //blue gradient
+            texture[i++][texWidth * y + x] = 0x0000FF * ((texHeight - y)*0x77/texHeight); //blue gradient
+            texture[i++][texWidth * y + x] = x1*x1+y1*y1 < (texWidth*texHeight/4)*0.75 ? 0x00FF00 : 0xFF00FF;
             assert (i == NUM_TEXTURES);
         }
         for(int i=0; i<NUM_TEXTURES; i++) {

@@ -56,7 +56,7 @@ public class Graph {
    * @returns Point on success, undefined if point already in graph
    */
   public Optional<Vec2d> tryAddPointXY(double x, double y) {
-    return this.tryAddPoint(Vec2d.c(x, y));
+    return this.tryAddPoint(new Vec2d(x, y));
   }
 
   /**

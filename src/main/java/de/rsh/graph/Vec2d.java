@@ -5,7 +5,7 @@ import java.util.function.Function;
 
 import de.rsh.utils.Pair;
 
-public final class Vec2d implements Cloneable {
+public final class Vec2d implements Cloneable, V2<Vec2d> { // to be able to use this class in arena based function, make the vector its own arena 
     private static final Vec2d zero0 = new Vec2d(0.0,0.0);
     private static final Vec2d up = new Vec2d(0.0,1.0);
     private static final Vec2d down = new Vec2d(0.0,-1.0);
@@ -27,15 +27,16 @@ public final class Vec2d implements Cloneable {
 
     /**
      * public constructor for 2 dim vectors
+     * makes this class arena compatible without beein arena
      * @param x
      * @param y
      * @return instance of Vec2d
      */
-    public static Vec2d c(double x, double y) {
+    public Vec2d c(double x, double y) {
         return new Vec2d(x, y);
     }
 
-    private Vec2d(double x, double y) {
+    public Vec2d(double x, double y) {
         this.x = x;
         this.y = y;
         this.alreadyNormalized = false;
@@ -51,6 +52,13 @@ public final class Vec2d implements Cloneable {
         this.y = y;
         this.alreadyNormalized = alreadyNormalized;
     }
+    public double x(Vec2d v) {
+        return v.x;
+    }
+    public double y(Vec2d v) {
+        return v.y;
+    }
+
     public double x() {
         return x;
     }
